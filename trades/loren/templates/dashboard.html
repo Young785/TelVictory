@@ -1,0 +1,582 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — TelVictory{% endblock %}
+{% block page_heading %}Dashboard{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}?v=3">
+{% endblock %}
+{% block content %}
+<div class="dash-quick-links">
+    <a href="/channels">📡 Channels</a>
+    <a href="/signals">📥 Signal Inbox</a>
+    <a href="/settings#tab-telegram">📱 Telegram login</a>
+    <a href="/settings#tab-platforms">🏛️ Platforms</a>
+</div>
+<div class="section-title">Overview</div>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Total Trades</div>
+                    <div class="stat-value" id="s-trades">{{ stats.total_trades }}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Win Rate</div>
+                    <div class="stat-value blue" id="s-rate">{{ stats.win_rate }}%</div>
+                    <div class="stat-sub green">{{ stats.won }} wins / {{ stats.lost }} losses</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Total Profit</div>
+                    <div class="stat-value {{ 'green' if stats.total_profit >= 0 else 'red' }}" id="s-profit">${{ '%.2f' % stats.total_profit }}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Pending</div>
+                    <div class="stat-value yellow" id="s-pending">{{ stats.pending }}</div>
+                </div>
+            </div>
+
+            <div class="section-title">Performance Metrics</div>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-header">
+                        <span class="feature-title">Daily Profit</span>
+                        <span id="daily-change" style="color: #8b949e;">Today</span>
+                    </div>
+                    <div class="feature-value" id="daily-profit">$0.00</div>
+                    <div class="feature-sub" id="daily-compare">No trades today</div>
+                    <div class="progress-bar"><div class="progress-fill" id="daily-progress" style="width: 0%; background: var(--success);"></div></div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-header">
+                        <span class="feature-title">Bot Components</span>
+                        <span class="badge-count" id="strategy-count">-</span>
+                    </div>
+                    <div class="feature-value" id="active-strategies">-</div>
+                    <div class="feature-sub">Components status</div>
+                    <div class="strategy-list" id="strategy-list">
+                        <div class="strategy-item"><span>Signal Parser</span><span class="strategy-status strategy-active" id="parser-status"></span></div>
+                        <div class="strategy-item"><span>Trade Executor</span><span class="strategy-status" id="executor-status"></span></div>
+                        <div class="strategy-item"><span>Scheduler</span><span class="strategy-status" id="scheduler-status"></span></div>
+                    </div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-header">
+                        <span class="feature-title">Account Balance</span>
+                        <span id="connection-status" style="color: #8b949e; font-size: 12px;">● Disconnected</span>
+                    </div>
+                    <div class="feature-value" id="balance">-</div>
+                    <div class="feature-sub" id="balance-type">Select platform</div>
+                    <div style="margin-top: 12px;">
+                        <select id="platform-select" style="background: var(--bg-card); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; font-size: 12px; width: 100%; cursor: pointer;" onchange="switchPlatform()">
+                            <option value="">-- Select Platform --</option>
+                            <option value="pocket_option">Pocket Option</option>
+                            <option value="deriv">Deriv</option>
+                        </select>
+                        <div style="display: flex; gap: 8px; margin-top: 8px;">
+                            <button id="btn-connect-platform" onclick="connectPlatform()" style="flex: 1; padding: 6px; background: var(--success); color: white; border: none; border-radius: 4px; font-size: 11px; cursor: pointer;">Connect</button>
+                            <button id="btn-disconnect-platform" onclick="disconnectPlatform()" style="flex: 1; padding: 6px; background: var(--danger); color: white; border: none; border-radius: 4px; font-size: 11px; cursor: pointer;">Disconnect</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-header">
+                        <span class="feature-title">Today's Trades</span>
+                        <span id="win-rate-today" style="color: #8b949e; font-size: 12px;">0% win rate</span>
+                    </div>
+                    <div class="feature-value" id="today-trades">0</div>
+                    <div class="feature-sub" id="today-result">No trades yet</div>
+                    <div class="progress-bar"><div class="progress-fill" id="trades-progress" style="width: 0%; background: var(--primary);"></div></div>
+                </div>
+            </div>
+
+            <div class="controls">
+                <div><strong style="color:var(--text-bright)">Bot Controls</strong></div>
+                <div>
+                    <button class="btn btn-primary" onclick="startBot()" id="btn-start" {{ 'disabled' if bot_running }}>▶ Start</button>
+                    <button class="btn btn-danger" onclick="stopBot()" id="btn-stop" {{ 'disabled' if not bot_running }}>⏹ Stop</button>
+                    <button class="btn" style="background: var(--bg-card); color: var(--text); margin-left: 8px;" onclick="pauseBot()">⏸ Pause</button>
+                </div>
+            </div>
+
+            <div class="dash-content">
+                <div>
+                    <div class="section-title">Recent Trades</div>
+                    <div class="card">
+                        <div class="card-body table-wrap">
+                            <table id="tradesTable">
+                                <thead><tr><th>Pair</th><th>Direction</th><th>Amount</th><th>Result</th><th>Time</th></tr></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="section-title">Market Overview</div>
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="strategy-list" id="market-list">
+                            <div class="strategy-item" id="market-empty"><span style="color: #8b949e;">No active markets</span><span>-</span></div>
+                        </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="logs-expanded">
+                <div class="section-header">
+                    <div class="section-title">System Logs & Activity</div>
+                    <div>
+                        <button class="filter-btn" onclick="filterLogs('all')">All</button>
+                        <button class="filter-btn" onclick="filterLogs('signal')">Signals</button>
+                        <button class="filter-btn" onclick="filterLogs('trade')">Trades</button>
+                        <button class="filter-btn" onclick="filterLogs('error')">Errors</button>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="logs-tabs">
+                        <div class="logs-tab active" onclick="switchTab('system')">System</div>
+                        <div class="logs-tab" onclick="switchTab('trades')">Trade History</div>
+                        <div class="logs-tab" onclick="switchTab('api')">API Calls</div>
+                        <div class="logs-tab" onclick="switchTab('errors')">Errors</div>
+                    </div>
+                    <div class="card-body logs-body" id="logs">
+                        <!-- Logs populated by JS -->
+                    </div>
+                </div>
+            </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+        document.addEventListener('DOMContentLoaded', () => { refreshData(); setInterval(refreshData, 5000); });
+        function refreshData() { loadTrades(); loadLogs(); loadStats(); }
+        function loadStats() {
+            fetch('/api/stats').then(r => r.json()).then(s => {
+                document.getElementById('s-trades').textContent = s.total_trades;
+                document.getElementById('s-rate').textContent = s.win_rate + '%';
+                document.getElementById('s-profit').textContent = '$' + s.total_profit.toFixed(2);
+                document.getElementById('s-profit').className = 'stat-value ' + (s.total_profit >= 0 ? 'green' : 'red');
+                document.getElementById('s-pending').textContent = s.pending;
+                
+                // Daily Profit - real data only
+                const dailyProfit = s.daily_profit || 0;
+                const dailyEl = document.getElementById('daily-profit');
+                dailyEl.textContent = '$' + dailyProfit.toFixed(2);
+                dailyEl.className = 'feature-value ' + (dailyProfit >= 0 ? 'green' : 'red');
+                
+                if (dailyProfit === 0 && s.today_trades === 0) {
+                    document.getElementById('daily-compare').textContent = 'No trades today';
+                    document.getElementById('daily-progress').style.width = '0%';
+                } else {
+                    document.getElementById('daily-compare').textContent = s.today_trades + ' trades today';
+                    document.getElementById('daily-progress').style.width = Math.min(Math.abs(dailyProfit) * 2, 100) + '%';
+                    document.getElementById('daily-progress').style.background = dailyProfit >= 0 ? 'var(--success)' : 'var(--danger)';
+                }
+                
+                // Bot Components status
+                const isRunning = document.querySelector('.status').classList.contains('running');
+                document.getElementById('active-strategies').textContent = isRunning ? '3' : '-';
+                document.getElementById('strategy-count').textContent = isRunning ? '3' : '-';
+                
+                // Update component status indicators
+                document.getElementById('parser-status').className = 'strategy-status ' + (isRunning ? 'strategy-active' : '');
+                document.getElementById('executor-status').className = 'strategy-status ' + (isRunning ? 'strategy-active' : '');
+                document.getElementById('scheduler-status').className = 'strategy-status ' + (isRunning ? 'strategy-active' : '');
+                
+                // Today's Trades - real data
+                const todayTrades = s.today_trades || 0;
+                document.getElementById('today-trades').textContent = todayTrades;
+                
+                if (todayTrades === 0) {
+                    document.getElementById('today-result').textContent = 'No trades yet';
+                    document.getElementById('win-rate-today').textContent = '-';
+                    document.getElementById('trades-progress').style.width = '0%';
+                } else {
+                    document.getElementById('today-result').textContent = todayTrades === 1 ? '1 trade' : todayTrades + ' trades';
+                    document.getElementById('win-rate-today').textContent = s.win_rate + '% win rate';
+                    document.getElementById('trades-progress').style.width = Math.min(todayTrades * 10, 100) + '%';
+                }
+            });
+            
+            // Load platform status
+            loadPlatformStatus();
+            
+            // Load bot status for component indicators
+            fetch('/api/bot/status').then(r => r.json()).then(status => {
+                const isRunning = status.running;
+                document.getElementById('active-strategies').textContent = isRunning ? '3' : '-';
+                document.getElementById('strategy-count').textContent = isRunning ? '3' : '-';
+                document.getElementById('parser-status').className = 'strategy-status ' + (isRunning ? 'strategy-active' : '');
+                document.getElementById('executor-status').className = 'strategy-status ' + (isRunning ? 'strategy-active' : '');
+                document.getElementById('scheduler-status').className = 'strategy-status ' + (isRunning ? 'strategy-active' : '');
+            }).catch(() => {});
+            
+            // Load markets/pairs
+            fetch('/api/markets').then(r => r.json()).then(m => {
+                const marketList = document.getElementById('market-list');
+                if (m.pairs && m.pairs.length > 0) {
+                    marketList.innerHTML = m.pairs.slice(0, 5).map(pair => `
+                        <div class="strategy-item"><span>${pair}</span><span class="green">Active</span></div>
+                    `).join('');
+                } else {
+                    marketList.innerHTML = '<div class="strategy-item"><span style="color: #8b949e;">No monitored pairs</span><span>-</span></div>';
+                }
+            }).catch(() => {
+                document.getElementById('market-list').innerHTML = '<div class="strategy-item"><span style="color: #8b949e;">Unable to load markets</span><span>-</span></div>';
+            });
+        }
+        function loadTrades() {
+            fetch('/api/trades').then(r => r.json()).then(d => {
+                document.querySelector('#tradesTable tbody').innerHTML = d.slice(-10).reverse().map(t => `
+                    <tr><td><strong>${t.pair||'-'}</strong></td><td>${t.direction||'-'}</td><td>$${t.amount||0}</td>
+                    <td><span class="badge badge-${t.result||'pending'}">${t.result||'pending'}</span></td>
+                    <td>${new Date(t.created_at).toLocaleTimeString()}</td></tr>
+                `).join('');
+            });
+        }
+        let currentLogFilter = 'all';
+        let currentTab = 'system';
+
+        function loadLogs() {
+            const limit = currentTab === 'system' ? 50 : 30;
+            fetch(`/api/logs?limit=${limit}&type=${currentTab}`).then(r => r.json()).then(d => {
+                let filtered = d;
+                if (currentLogFilter !== 'all') {
+                    filtered = d.filter(l => (l.tag || l.level) === currentLogFilter);
+                }
+                
+                if (filtered.length === 0) {
+                    document.getElementById('logs').innerHTML = '<div class="log-row"><span class="log-message" style="color: #8b949e;">No logs available</span></div>';
+                    return;
+                }
+                
+                document.getElementById('logs').innerHTML = filtered.reverse().map(l => `
+                    <div class="log-row">
+                        <span class="log-time">${new Date(l.created_at).toLocaleTimeString()}</span>
+                        <span class="log-tag tag-${l.tag || l.level}">${(l.tag || l.level).toUpperCase()}</span>
+                        <span class="log-message">${l.message}</span>
+                    </div>
+                `).join('');
+            }).catch(() => {
+                document.getElementById('logs').innerHTML = '<div class="log-row"><span class="log-message" style="color: #8b949e;">Error loading logs</span></div>';
+            });
+        }
+
+        function filterLogs(type) {
+            currentLogFilter = type;
+            loadLogs();
+        }
+
+        function switchTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.logs-tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            loadLogs();
+        }
+
+        function pauseBot() {
+            LoadingUtils.showPageLoader('Pausing bot...');
+            fetch('/api/bot/pause', {method: 'POST'}).then(r => r.json()).then(d => {
+                LoadingUtils.hidePageLoader();
+                alert(d.message);
+            }).catch(() => {
+                LoadingUtils.hidePageLoader();
+                alert('Pause functionality not implemented');
+            });
+        }
+
+        function loadPlatformStatus() {
+            fetch('/api/platform/active').then(r => r.json()).then(p => {
+                const status = p.active;
+                const isConnected = status && status.connected;
+                const isSimulated = status && status.simulation_mode;
+
+                if (isConnected && status) {
+                    const balance = status.balance || 0;
+                    document.getElementById('balance').textContent = '$' + balance.toFixed(2);
+                    document.getElementById('balance-type').textContent = (status.account_type === 'demo' ? 'Demo' : 'Live') + (isSimulated ? ' (Simulation)' : '');
+                    document.getElementById('connection-status').textContent = '● ' + (isSimulated ? 'Simulated' : 'Connected');
+                    document.getElementById('connection-status').style.color = isSimulated ? 'var(--warning)' : 'var(--success)';
+                    document.getElementById('platform-select').value = p.platform_name || '';
+                } else {
+                    document.getElementById('balance').textContent = '-';
+                    document.getElementById('balance-type').textContent = status && status.error_message ? 'Error' : 'Not connected';
+                    document.getElementById('connection-status').textContent = '● Disconnected';
+                    document.getElementById('connection-status').style.color = '#8b949e';
+                }
+            }).catch(() => {
+                document.getElementById('balance').textContent = '-';
+                document.getElementById('balance-type').textContent = 'API Error';
+            });
+        }
+
+        function switchPlatform() {
+            const platform = document.getElementById('platform-select').value;
+            if (platform) {
+                document.getElementById('balance-type').textContent = 'Click Connect to activate ' + platform;
+            }
+        }
+
+        function connectPlatform() {
+            const platform = document.getElementById('platform-select').value;
+            if (!platform) {
+                alert('Please select a platform first');
+                return;
+            }
+            const btn = document.getElementById('btn-connect-platform');
+            LoadingUtils.setButtonLoading(btn, 'Connecting...');
+            fetch('/api/platform/connect', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({platform: platform})
+            }).then(r => r.json()).then(d => {
+                LoadingUtils.resetButton(btn);
+                alert(d.message);
+                if (d.success) loadPlatformStatus();
+            }).catch(e => {
+                LoadingUtils.resetButton(btn);
+                alert('Error: ' + e.message);
+            });
+        }
+
+        function disconnectPlatform() {
+            const platform = document.getElementById('platform-select').value || 'pocket_option';
+            const btn = document.getElementById('btn-disconnect-platform');
+            LoadingUtils.setButtonLoading(btn, 'Disconnecting...');
+            fetch('/api/platform/disconnect', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({platform: platform})
+            }).then(r => r.json()).then(d => {
+                LoadingUtils.resetButton(btn);
+                alert(d.message);
+                if (d.success) loadPlatformStatus();
+            }).catch(e => {
+                LoadingUtils.resetButton(btn);
+                alert('Error: ' + e.message);
+            });
+        }
+
+        function startBot() {
+            const btn = document.getElementById('btn-start');
+            LoadingUtils.setButtonLoading(btn, 'Starting...');
+            fetch('/api/bot/start', {method: 'POST'}).then(r => r.json()).then(d => {
+                alert(d.message);
+                location.reload();
+            }).catch(e => {
+                LoadingUtils.resetButton(btn);
+                alert('Error: ' + e.message);
+            });
+        }
+
+        function stopBot() {
+            const btn = document.getElementById('btn-stop');
+            LoadingUtils.setButtonLoading(btn, 'Stopping...');
+            fetch('/api/bot/stop', {method: 'POST'}).then(r => r.json()).then(d => {
+                alert(d.message);
+                location.reload();
+            }).catch(e => {
+                LoadingUtils.resetButton(btn);
+                alert('Error: ' + e.message);
+            });
+        }
+
+        // Telegram Auth Modal Functions
+        let telegramAuthStep = 'phone'; // 'phone' or 'code'
+        let telegramPhone = '';
+
+        function showTelegramModal() {
+            const modal = document.getElementById('telegram-modal');
+            modal.style.display = 'flex';
+            modal.classList.add('required');
+            telegramAuthStep = 'phone';
+            updateTelegramModalUI();
+            
+            // Prevent body scrolling while modal is open
+            document.body.style.overflow = 'hidden';
+            
+            // Disable all sidebar navigation items except the auth indicator
+            document.querySelectorAll('.app-sidebar .nav-item').forEach(li => {
+                li.classList.add('disabled');
+            });
+            
+            // Show warning message
+            document.getElementById('telegram-modal-title').innerHTML = '⚠️ AUTHENTICATION REQUIRED';
+            
+            // Check if auth is still needed every 5 seconds
+            if (!window._authCheckInterval) {
+                window._authCheckInterval = setInterval(() => {
+                    fetch('/api/bot/status').then(r => r.json()).then(status => {
+                        if (!status.telegram_needs_auth) {
+                            // Auth complete, hide modal and re-enable navigation
+                            hideTelegramModal();
+                            clearInterval(window._authCheckInterval);
+                            window._authCheckInterval = null;
+                            location.reload();
+                        }
+                    }).catch(() => {});
+                }, 5000);
+            }
+        }
+
+        function hideTelegramModal() {
+            // Only allow hiding if session exists
+            fetch('/api/bot/status').then(r => r.json()).then(status => {
+                if (!status.telegram_needs_auth) {
+                    document.getElementById('telegram-modal').style.display = 'none';
+                    document.body.style.overflow = '';
+                }
+            }).catch(() => {});
+        }
+
+        // Prevent modal from closing when clicking outside
+        document.addEventListener('click', function(e) {
+            const modal = document.getElementById('telegram-modal');
+            if (modal && modal.style.display === 'flex') {
+                // If click is on the backdrop (not the modal content), prevent it
+                if (e.target === modal) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    // Shake animation to indicate modal is required
+                    modal.querySelector('div').style.animation = 'shake 0.5s';
+                    setTimeout(() => {
+                        modal.querySelector('div').style.animation = '';
+                    }, 500);
+                    return false;
+                }
+            }
+        }, true);
+
+        // Prevent Escape key from closing modal
+        document.addEventListener('keydown', function(e) {
+            const modal = document.getElementById('telegram-modal');
+            if (modal && modal.style.display === 'flex' && e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            }
+        });
+
+        function updateTelegramModalUI() {
+            const phoneSection = document.getElementById('telegram-phone-section');
+            const codeSection = document.getElementById('telegram-code-section');
+            const title = document.getElementById('telegram-modal-title');
+            const desc = document.getElementById('telegram-modal-desc');
+
+            if (telegramAuthStep === 'phone') {
+                phoneSection.style.display = 'block';
+                codeSection.style.display = 'none';
+                title.textContent = '🔐 Telegram Authentication Required';
+                desc.textContent = 'Enter your phone number to login to Telegram';
+            } else {
+                phoneSection.style.display = 'none';
+                codeSection.style.display = 'block';
+                title.textContent = '📱 Enter Verification Code';
+                desc.textContent = `Enter the code sent to ${telegramPhone}`;
+            }
+        }
+
+        function submitTelegramPhone() {
+            const phone = document.getElementById('telegram-phone').value.trim();
+            if (!phone) {
+                alert('Please enter your phone number');
+                return;
+            }
+            telegramPhone = phone;
+            LoadingUtils.showModalLoader('telegram-modal', 'Sending code...');
+            fetch('/api/telegram/auth', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({phone: phone})
+            }).then(r => r.json()).then(d => {
+                LoadingUtils.hideModalLoader('telegram-modal');
+                if (d.success) {
+                    if (d.needs_code) {
+                        telegramAuthStep = 'code';
+                        updateTelegramModalUI();
+                    } else if (d.needs_bot_start) {
+                        alert(d.message);
+                        hideTelegramModal();
+                    }
+                } else {
+                    alert(d.message || 'Authentication failed');
+                }
+            }).catch(e => {
+                LoadingUtils.hideModalLoader('telegram-modal');
+                alert('Error: ' + e.message);
+            });
+        }
+
+        function submitTelegramCode() {
+            const code = document.getElementById('telegram-code').value.trim();
+            if (!code) {
+                alert('Please enter the verification code');
+                return;
+            }
+            LoadingUtils.showModalLoader('telegram-modal', 'Verifying...');
+            fetch('/api/telegram/auth', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({phone: telegramPhone, code: code})
+            }).then(r => r.json()).then(d => {
+                LoadingUtils.hideModalLoader('telegram-modal');
+                if (d.success) {
+                    alert('✅ Authentication successful! The bot will connect to Telegram.');
+                    hideTelegramModal();
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    alert(d.message || 'Code verification failed');
+                }
+            }).catch(e => {
+                LoadingUtils.hideModalLoader('telegram-modal');
+                alert('Error: ' + e.message);
+            });
+        }
+
+        // Check for Telegram auth requirement on load
+        function checkTelegramAuth() {
+            fetch('/api/bot/status').then(r => r.json()).then(status => {
+                if (status.telegram_needs_auth) {
+                    showTelegramModal();
+                } else {
+                    document.querySelectorAll('.app-sidebar .nav-item.disabled').forEach(li => {
+                        li.classList.remove('disabled');
+                    });
+                    const modal = document.getElementById('telegram-modal');
+                    if (modal) modal.style.display = 'none';
+                }
+            }).catch(() => {});
+        }
+
+        // Check auth status on load and periodically
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(checkTelegramAuth, 1000);
+            setInterval(checkTelegramAuth, 30000);
+        });
+
+    </script>
+
+    <!-- Telegram Auth Modal -->
+    <div id="telegram-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 9999; justify-content: center; align-items: center;">
+        <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 32px; width: 90%; max-width: 400px; box-shadow: var(--shadow);">
+            <h3 id="telegram-modal-title" style="margin: 0 0 8px 0; color: var(--text-bright);">🔐 Telegram Authentication Required</h3>
+            <p id="telegram-modal-desc" style="margin: 0 0 24px 0; color: var(--text); font-size: 14px;">Enter your phone number to login to Telegram</p>
+            
+            <div id="telegram-phone-section">
+                <label style="display: block; margin-bottom: 8px; font-size: 12px; color: #8b949e;">Phone Number (with country code)</label>
+                <input type="text" id="telegram-phone" placeholder="+1234567890" style="width: 100%; padding: 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 14px; margin-bottom: 16px;">
+                <p style="font-size: 12px; color: #8b949e; margin-bottom: 16px;">Example: +14155552671 (USA), +2348061163188 (Nigeria)</p>
+                <button onclick="submitTelegramPhone()" style="width: 100%; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;">Send Code</button>
+            </div>
+
+            <div id="telegram-code-section" style="display: none;">
+                <label style="display: block; margin-bottom: 8px; font-size: 12px; color: #8b949e;">Verification Code</label>
+                <input type="text" id="telegram-code" placeholder="12345" style="width: 100%; padding: 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 14px; margin-bottom: 16px;">
+                <p style="font-size: 12px; color: #8b949e; margin-bottom: 16px;">Check your Telegram app for the login code</p>
+                <button onclick="submitTelegramCode()" style="width: 100%; padding: 12px; background: var(--success); color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;">Verify & Login</button>
+            </div>
+
+            <p style="font-size: 11px; color: #8b949e; margin-top: 16px; text-align: center;">
+                Authentication required to use Telegram features
+            </p>
+        </div>
+    </div>
+{% endblock %}
+

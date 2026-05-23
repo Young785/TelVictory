@@ -1,0 +1,21 @@
+# OS / editor
+.DS_Store
+.windsurf/
+
+# Secrets and sessions
+.env
+cookies.txt
+*.session
+*.session-*
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+
+# Runtime data and logs
+trades/loren/logs/
+trades/loren/data/
+.bot.lock
+*.lock

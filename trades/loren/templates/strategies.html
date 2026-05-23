@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+
+{% block title %}Strategies - Trading Bot{% endblock %}
+
+{% block content %}
+<div class="section-title">Trading Strategies</div>
+
+<div class="card">
+    <div class="card-header">Active Components</div>
+    <div class="card-body">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px;">
+            <div style="background: var(--bg-card); padding: 16px; border-radius: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <strong>📡 Signal Parser</strong>
+                    <span class="badge badge-win" id="parser-status">Active</span>
+                </div>
+                <p style="font-size: 12px; color: #8b949e;">Parses trading signals from Telegram messages</p>
+            </div>
+            <div style="background: var(--bg-card); padding: 16px; border-radius: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <strong>⚡ Trade Executor</strong>
+                    <span class="badge badge-{{ 'win' if active_platform and active_platform.connected else 'pending' }}" id="executor-status">
+                        {{ 'Active' if active_platform and active_platform.connected else 'Idle' }}
+                    </span>
+                </div>
+                <p style="font-size: 12px; color: #8b949e;">Executes trades on {{ active_platform.platform_name if active_platform else 'no' }} platform</p>
+            </div>
+            <div style="background: var(--bg-card); padding: 16px; border-radius: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <strong>⏰ Scheduler</strong>
+                    <span class="badge badge-win" id="scheduler-status">Active</span>
+                </div>
+                <p style="font-size: 12px; color: #8b949e;">Schedules trades at exact entry times</p>
+            </div>
+            <div style="background: var(--bg-card); padding: 16px; border-radius: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <strong>📈 Martingale Manager</strong>
+                    <span class="badge badge-win">Active</span>
+                </div>
+                <p style="font-size: 12px; color: #8b949e;">Manages martingale levels for signals ({{ config.MAX_MARTINGALE_LEVELS }} max)</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="section-title" style="margin-top: 24px;">Connected Platforms</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;">
+    {% for name, status in platforms.items() %}
+    <div class="card">
+        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <span>{{ name.replace('_', ' ').title() }}</span>
+            <span class="badge badge-{{ 'win' if status.connected else 'loss' if status.error_message else 'pending' }}">
+                {{ 'Connected' if status.connected else 'Error' if status.error_message else 'Disconnected' }}
+            </span>
+        </div>
+        <div class="card-body">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                <div>
+                    <div style="font-size: 11px; color: #8b949e;">Balance</div>
+                    <div style="font-size: 18px; font-weight: 600;">${{ '%.2f' % status.balance }}</div>
+                </div>
+                <div>
+                    <div style="font-size: 11px; color: #8b949e;">Account</div>
+                    <div style="font-size: 14px;">{{ status.account_type.title() }}</div>
+                </div>
+            </div>
+            {% if status.simulation_mode %}
+            <div style="background: rgba(210, 153, 34, 0.15); color: var(--warning); padding: 8px; border-radius: 6px; font-size: 12px; margin-bottom: 12px;">
+                ⚠️ Running in simulation mode
+            </div>
+            {% endif %}
+            {% if status.error_message %}
+            <div style="background: rgba(248, 81, 73, 0.15); color: var(--danger); padding: 8px; border-radius: 6px; font-size: 12px;">
+                ❌ {{ status.error_message }}
+            </div>
+            {% endif %}
+            <div style="display: flex; gap: 8px; margin-top: 12px;">
+                <button onclick="connectPlatform('{{ name }}')" class="btn btn-primary" style="flex: 1; font-size: 12px; padding: 8px;">Connect</button>
+                <button onclick="disconnectPlatform('{{ name }}')" class="btn" style="flex: 1; font-size: 12px; padding: 8px; background: var(--bg-card); color: var(--text);">Disconnect</button>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="card">
+        <div class="card-body" style="text-align: center; padding: 40px;">
+            <div style="font-size: 32px; margin-bottom: 12px;">🔌</div>
+            <p style="color: #8b949e;">No platforms configured</p>
+            <p style="font-size: 12px; color: #8b949e; margin-top: 8px;">Go to Settings to add trading platforms</p>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="section-title" style="margin-top: 24px;">Configuration</div>
+<div class="card">
+    <div class="card-header">Current Settings</div>
+    <div class="card-body">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+            <div>
+                <div style="font-size: 12px; color: #8b949e; margin-bottom: 4px;">Default Trade Amount</div>
+                <div style="font-size: 20px; font-weight: 600;">${{ config.DEFAULT_AMOUNT }}</div>
+            </div>
+            <div>
+                <div style="font-size: 12px; color: #8b949e; margin-bottom: 4px;">Currency</div>
+                <div style="font-size: 20px; font-weight: 600;">{{ config.CURRENCY }}</div>
+            </div>
+            <div>
+                <div style="font-size: 12px; color: #8b949e; margin-bottom: 4px;">Max Martingale Levels</div>
+                <div style="font-size: 20px; font-weight: 600;">{{ config.MAX_MARTINGALE_LEVELS }}</div>
+            </div>
+            <div>
+                <div style="font-size: 12px; color: #8b949e; margin-bottom: 4px;">Martingale Multiplier</div>
+                <div style="font-size: 20px; font-weight: 600;">{{ config.MARTINGALE_MULTIPLIER }}x</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+function connectPlatform(platform) {
+    fetch('/api/platform/connect', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({platform: platform})
+    }).then(r => r.json()).then(d => {
+        if (d.success) {
+            location.reload();
+        } else {
+            alert('Failed: ' + d.message);
+        }
+    });
+}
+
+function disconnectPlatform(platform) {
+    fetch('/api/platform/disconnect', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({platform: platform})
+    }).then(r => r.json()).then(d => {
+        if (d.success) {
+            location.reload();
+        } else {
+            alert('Failed: ' + d.message);
+        }
+    });
+}
+
+// Refresh status every 10 seconds
+setInterval(() => {
+    fetch('/api/platform/active').then(r => r.json()).then(d => {
+        const executorStatus = document.getElementById('executor-status');
+        if (executorStatus && d.active) {
+            const isConnected = d.active.connected;
+            executorStatus.className = 'badge badge-' + (isConnected ? 'win' : 'pending');
+            executorStatus.textContent = isConnected ? 'Active' : 'Idle';
+        }
+    });
+}, 10000);
+</script>
+{% endblock %}
+
+<div class="section-title" style="margin-top: 24px;">Telegram Configuration</div>
+<div class="card">
+    <div class="card-header">Channel Settings</div>
+    <div class="card-body">
+        <div style="margin-bottom: 16px;">
+            <div style="font-size: 12px; color: #8b949e; margin-bottom: 4px;">Monitored Channel</div>
+            <div style="font-size: 16px; font-weight: 600;">
+                {% if config.TELEGRAM_CHANNEL_ID %}
+                    {{ config.TELEGRAM_CHANNEL_ID }}
+                {% else %}
+                    <span style="color: #8b949e;">All channels</span>
+                {% endif %}
+            </div>
+        </div>
+        <div>
+            <div style="font-size: 12px; color: #8b949e; margin-bottom: 4px;">Session</div>
+            <div style="font-size: 14px;">{{ config.TELEGRAM_SESSION_NAME }}</div>
+        </div>
+    </div>
+</div>
+{% endblock %}

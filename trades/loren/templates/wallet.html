@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+
+{% block title %}Wallet & Balance - Trading Bot{% endblock %}
+
+{% block content %}
+<div class="section-title">Wallet & Balance</div>
+
+<!-- Overall Stats -->
+<div class="card">
+    <div class="card-header">Account Overview</div>
+    <div class="card-body">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 24px;">
+            <div>
+                <div style="font-size: 12px; color: #8b949e; margin-bottom: 8px;">Total Balance</div>
+                <div style="font-size: 36px; font-weight: 700; color: var(--text-bright);">
+                    ${{ '%.2f' % (active_platform.balance if active_platform else 0) }}
+                </div>
+                <div style="font-size: 12px; color: #8b949e; margin-top: 4px;">
+                    {{ active_platform.account_type.title() if active_platform else 'No' }} Account
+                    {% if active_platform and active_platform.simulation_mode %} (Simulated){% endif %}
+                </div>
+            </div>
+            <div>
+                <div style="font-size: 12px; color: #8b949e; margin-bottom: 8px;">Total Profit</div>
+                <div style="font-size: 36px; font-weight: 700;" class="{{ 'green' if stats.total_profit >= 0 else 'red' }}">
+                    ${{ '%.2f' % stats.total_profit }}
+                </div>
+                <div style="font-size: 12px; color: #8b949e; margin-top: 4px;">All time</div>
+            </div>
+            <div>
+                <div style="font-size: 12px; color: #8b949e; margin-bottom: 8px;">Win Rate</div>
+                <div style="font-size: 36px; font-weight: 700; color: var(--primary);">{{ stats.win_rate }}%</div>
+                <div style="font-size: 12px; color: #8b949e; margin-top: 4px;">{{ stats.won }} wins / {{ stats.lost }} losses</div>
+            </div>
+            <div>
+                <div style="font-size: 12px; color: #8b949e; margin-bottom: 8px;">Active Platforms</div>
+                <div style="font-size: 36px; font-weight: 700; color: var(--text-bright);">{{ platforms|length }}</div>
+                <div style="font-size: 12px; color: #8b949e; margin-top: 4px;">{{ platforms|selectattr('connected', 'equalto', true)|list|length }} connected</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Platform Balances -->
+<div class="section-title" style="margin-top: 24px;">Platform Balances</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;">
+    {% for name, status in platforms.items() %}
+    <div class="card">
+        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span>{{ '🔴' if not status.connected else '🟢' }}</span>
+                <span>{{ name.replace('_', ' ').title() }}</span>
+            </div>
+            <span class="badge badge-{{ 'win' if status.connected else 'pending' }}">
+                {{ 'Live' if status.connected and not status.simulation_mode else 'Simulated' if status.simulation_mode else 'Offline' }}
+            </span>
+        </div>
+        <div class="card-body">
+            <div style="text-align: center; padding: 20px 0;">
+                <div style="font-size: 12px; color: #8b949e; margin-bottom: 8px;">Balance</div>
+                <div style="font-size: 42px; font-weight: 700; color: var(--text-bright);">${{ '%.2f' % status.balance }}</div>
+                <div style="font-size: 14px; color: #8b949e; margin-top: 8px;">{{ status.currency }}</div>
+            </div>
+            {% if not status.connected %}
+            <button onclick="connectPlatform('{{ name }}')" class="btn btn-primary" style="width: 100%;">Connect</button>
+            {% else %}
+            <div style="display: flex; gap: 8px;">
+                <button onclick="refreshBalance('{{ name }}')" class="btn btn-primary" style="flex: 1;">Refresh</button>
+                <button onclick="disconnectPlatform('{{ name }}')" class="btn" style="flex: 1; background: var(--bg-card); color: var(--text);">Disconnect</button>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% else %}
+    <div class="card">
+        <div class="card-body" style="text-align: center; padding: 60px 20px;">
+            <div style="font-size: 48px; margin-bottom: 16px;">💳</div>
+            <p style="color: #8b949e;">No trading platforms configured</p>
+            <p style="font-size: 12px; color: #8b949e; margin-top: 8px;">Add platforms in Settings</p>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% block extra_js %}
+<script>
+function connectPlatform(platform) {
+    fetch('/api/platform/connect', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({platform: platform})
+    }).then(r => r.json()).then(d => {
+        if (d.success) {
+            location.reload();
+        } else {
+            alert('Failed: ' + d.message);
+        }
+    });
+}
+
+function disconnectPlatform(platform) {
+    fetch('/api/platform/disconnect', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({platform: platform})
+    }).then(r => r.json()).then(d => {
+        if (d.success) {
+            location.reload();
+        } else {
+            alert('Failed: ' + d.message);
+        }
+    });
+}
+
+function refreshBalance(platform) {
+    fetch('/api/platform/active').then(r => r.json()).then(d => {
+        if (d.active) {
+            location.reload();
+        }
+    });
+}
+
+// Auto-refresh balances every 30 seconds
+setInterval(() => {
+    fetch('/api/platform/active').then(r => r.json()).then(d => {
+        // Could update balances dynamically here
+    });
+}, 30000);
+</script>
+{% endblock %}
+
+<div class="section-title" style="margin-top: 24px;">Quick Actions</div>
+<div class="card">
+    <div class="card-header">Platform Management</div>
+    <div class="card-body">
+        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <button onclick="connectAll()" class="btn btn-primary">Connect All</button>
+            <button onclick="disconnectAll()" class="btn" style="background: var(--bg-card); color: var(--text);">Disconnect All</button>
+            <a href="/settings" class="btn" style="background: var(--bg-card); color: var(--text); text-decoration: none;">Configure</a>
+        </div>
+        <p style="font-size: 13px; color: #8b949e; margin-top: 16px; line-height: 1.5;">
+            Connect to trading platforms to view real balances and execute live trades.
+            The bot can run in simulation mode for testing without real funds.
+        </p>
+    </div>
+</div>
+
+<script>
+function connectAll() {
+    {% for name, status in platforms.items() %}
+    fetch('/api/platform/connect', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({platform: '{{ name }}'})
+    });
+    {% endfor %}
+    setTimeout(() => location.reload(), 1000);
+}
+
+function disconnectAll() {
+    {% for name, status in platforms.items() %}
+    fetch('/api/platform/disconnect', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({platform: '{{ name }}'})
+    });
+    {% endfor %}
+    setTimeout(() => location.reload(), 1000);
+}
+</script>
+
+<div class="section-title" style="margin-top: 24px;">Recent Transactions</div>
+<div class="card">
+    <div class="card-header">Trade History</div>
+    <div class="card-body scrollable">
+        {% if stats.total_trades > 0 %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Type</th>
+                    <th>Amount</th>
+                    <th>Result</th>
+                    <th>Balance Change</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Would show actual trade transactions here -->
+                <tr>
+                    <td colspan="5" style="text-align: center; color: #8b949e;">Transaction details loading...</td>
+                </tr>
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+            <div class="empty-state-icon">💰</div>
+            <p>No transactions yet</p>
+            <p style="font-size: 12px; margin-top: 8px;">Start the bot to begin trading</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}TelVictory{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=3">
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="app-body">
+<div class="app-shell">
+    <aside class="app-sidebar" id="sidebar">
+        <div class="sidebar-brand">
+            <div class="logo">Tel<span>Victory</span></div>
+            <div class="tagline">Signal copy trading</div>
+        </div>
+        <nav class="sidebar-nav">
+            <div class="nav-group">
+                <div class="nav-group-label">Overview</div>
+                <a href="/" class="nav-item {{ 'active' if active_page == 'dashboard' else '' }}">
+                    <span class="icon">📊</span> Dashboard
+                </a>
+            </div>
+            <div class="nav-group">
+                <div class="nav-group-label">Signals</div>
+                <a href="/channels" class="nav-item {{ 'active' if active_page == 'channels' else '' }}">
+                    <span class="icon">📡</span> Channels
+                </a>
+                <a href="/signals" class="nav-item {{ 'active' if active_page == 'signals' else '' }}">
+                    <span class="icon">📥</span> Signal Inbox
+                </a>
+            </div>
+            <div class="nav-group">
+                <div class="nav-group-label">Trading</div>
+                <a href="/history" class="nav-item {{ 'active' if active_page == 'history' else '' }}">
+                    <span class="icon">📈</span> Trade History
+                </a>
+                <a href="/test_trade" class="nav-item {{ 'active' if active_page == 'test_trade' else '' }}">
+                    <span class="icon">🧪</span> Test Trade
+                </a>
+            </div>
+            <div class="nav-group">
+                <div class="nav-group-label">Monitor</div>
+                <a href="/logs" class="nav-item {{ 'active' if active_page == 'logs' else '' }}">
+                    <span class="icon">📋</span> Activity Logs
+                </a>
+                <a href="/notifications" class="nav-item {{ 'active' if active_page == 'notifications' else '' }}">
+                    <span class="icon">🔔</span> Notifications
+                    <span class="badge-count" id="notif-count">0</span>
+                </a>
+            </div>
+        </nav>
+        <div class="sidebar-footer">
+            <a href="/settings" class="nav-item {{ 'active' if active_page == 'settings' else '' }}">
+                <span class="icon">⚙️</span> Settings
+            </a>
+            <a href="/help" class="nav-item {{ 'active' if active_page == 'help' else '' }}">
+                <span class="icon">❓</span> Help
+            </a>
+        </div>
+    </aside>
+
+    <div class="app-main">
+        <header class="app-header">
+            <button type="button" class="menu-toggle" id="menu-toggle" aria-label="Menu">☰</button>
+            <span class="header-title">{% block page_heading %}TelVictory{% endblock %}</span>
+            <span class="header-spacer"></span>
+            <div class="header-actions">
+                <button type="button" class="btn-icon" onclick="location.reload()" title="Refresh">↻</button>
+                <div class="status-pill {{ 'running' if bot_running else 'stopped' }}">
+                    {{ 'Running' if bot_running else 'Stopped' }}
+                </div>
+                <a href="/logout" class="btn-icon" style="color:var(--danger);text-decoration:none">Logout</a>
+            </div>
+        </header>
+        <main class="app-content">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+</div>
+
+<div class="sidebar-overlay" id="sidebar-overlay"></div>
+<div id="page-loader" class="page-loader">
+    <div class="page-loader-spinner"></div>
+    <div class="page-loader-text">Loading...</div>
+</div>
+
+<script src="{{ url_for('static', filename='js/nav.js') }}?v=3"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}?v=3"></script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>

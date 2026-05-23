@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block title %}Channels — TelVictory{% endblock %}
+{% block page_heading %}Channels{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Signal channels</h1>
+    <p>Add Telegram groups you copy-trade from. Each channel gets its own signal format (parser), timezone, and broker.</p>
+    <div class="page-actions">
+        <button class="btn btn-primary" onclick="openAddModal()">+ Add channel</button>
+        <button class="btn btn-secondary" onclick="fetchTelegramChannels()">Fetch from Telegram</button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Channel</th>
+                    <th>Parser</th>
+                    <th>Platform</th>
+                    <th>Timezone</th>
+                    <th>Auto trade</th>
+                    <th>Status</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ch in channels %}
+                <tr>
+                    <td><strong>{{ ch.channel_name }}</strong><br><span class="hint">{{ ch.channel_id }}</span></td>
+                    <td>{{ ch.parser_id or 'lorenzo' }}</td>
+                    <td>{{ ch.platform_id or 'pocket_option' }}</td>
+                    <td>{{ ch.timezone or 'UTC' }}</td>
+                    <td>{{ 'Yes' if ch.auto_trade else 'No' }}</td>
+                    <td><span class="badge badge-{{ 'win' if ch.is_active else 'pending' }}">{{ 'Active' if ch.is_active else 'Paused' }}</span></td>
+                    <td><button class="btn btn-secondary btn-sm" onclick="editChannel({{ ch.id }})">Edit</button></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7"><div class="empty-state"><div class="empty-state-icon">📡</div><p>No channels yet. Add Lorenzo, BlackStar, BinaryAnalyst, etc.</p></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">Test parser</div>
+    <div class="card-body">
+        <div class="form-grid">
+            <div class="form-group">
+                <label>Parser</label>
+                <select id="test-parser" class="form-control">
+                    {% for pid, label in parser_choices %}
+                    <option value="{{ pid }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Timezone</label>
+                <input id="test-tz" class="form-control" value="UTC-4" placeholder="UTC-4">
+            </div>
+        </div>
+        <div class="form-group" style="margin-top:12px">
+            <label>Paste sample message</label>
+            <textarea id="test-message" class="form-control" rows="7" placeholder="Paste a signal from the channel..."></textarea>
+        </div>
+        <button class="btn btn-primary" style="margin-top:12px" onclick="runTestParse()">Test parse</button>
+        <pre id="test-result" style="margin-top:16px;padding:14px;background:var(--bg-input);border-radius:8px;font-size:12px;display:none;overflow:auto"></pre>
+    </div>
+</div>
+
+<div id="edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;align-items:center;justify-content:center;padding:16px">
+    <div class="card" style="width:100%;max-width:440px;margin:0">
+        <div class="card-header">Edit channel</div>
+        <div class="card-body">
+            <input type="hidden" id="edit-id">
+            <div class="form-group"><label>Parser</label>
+                <select id="edit-parser" class="form-control">{% for pid, label in parser_choices %}<option value="{{ pid }}">{{ label }}</option>{% endfor %}</select>
+            </div>
+            <div class="form-group" style="margin-top:12px"><label>Platform</label>
+                <select id="edit-platform" class="form-control">{% for pid, label in platform_choices %}<option value="{{ pid }}">{{ label }}</option>{% endfor %}</select>
+            </div>
+            <div class="form-group" style="margin-top:12px"><label>Timezone</label><input id="edit-tz" class="form-control"></div>
+            <div class="form-group" style="margin-top:12px"><label>Amount override ($)</label><input id="edit-amount" type="number" class="form-control" step="0.1"></div>
+            <label class="form-check" style="margin-top:12px"><input type="checkbox" id="edit-auto" checked> Auto-trade</label>
+            <div class="form-actions">
+                <button class="btn btn-primary" onclick="saveChannelEdit()">Save</button>
+                <button class="btn btn-secondary" onclick="closeEditModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const channelData = {{ channels|tojson }};
+function editChannel(id) {
+    const ch = channelData.find(c => c.id === id);
+    if (!ch) return;
+    document.getElementById('edit-id').value = id;
+    document.getElementById('edit-parser').value = ch.parser_id || 'lorenzo';
+    document.getElementById('edit-platform').value = ch.platform_id || 'pocket_option';
+    document.getElementById('edit-tz').value = ch.timezone || 'UTC';
+    document.getElementById('edit-amount').value = ch.default_amount || '';
+    document.getElementById('edit-auto').checked = ch.auto_trade !== false;
+    document.getElementById('edit-modal').style.display = 'flex';
+}
+function closeEditModal() { document.getElementById('edit-modal').style.display = 'none'; }
+async function saveChannelEdit() {
+    const id = document.getElementById('edit-id').value;
+    const r = await fetch(`/api/channels/${id}`, {
+        method: 'PUT',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+            parser_id: document.getElementById('edit-parser').value,
+            platform_id: document.getElementById('edit-platform').value,
+            timezone: document.getElementById('edit-tz').value,
+            auto_trade: document.getElementById('edit-auto').checked,
+            default_amount: document.getElementById('edit-amount').value || null
+        })
+    });
+    const d = await r.json();
+    if (d.success) { showNotification('Channel saved', 'success'); location.reload(); }
+    else showNotification(d.message || 'Failed', 'error');
+}
+async function runTestParse() {
+    const r = await fetch('/api/signals/test-parse', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+            message: document.getElementById('test-message').value,
+            parser_id: document.getElementById('test-parser').value,
+            timezone: document.getElementById('test-tz').value
+        })
+    });
+    const d = await r.json();
+    const el = document.getElementById('test-result');
+    el.style.display = 'block';
+    el.textContent = d.success ? JSON.stringify(d, null, 2) : 'Error: ' + (d.error || 'unknown');
+}
+function openAddModal() {
+    const id = prompt('Telegram channel ID (numeric):');
+    if (!id) return;
+    const name = prompt('Display name:', 'New channel') || 'New channel';
+    fetch('/api/channels', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ channel_id: id, channel_name: name, parser_id: 'lorenzo', platform_id: 'pocket_option', timezone: 'UTC-4' })
+    }).then(r => r.json()).then(d => { if (d.success) location.reload(); else showNotification(d.message, 'error'); });
+}
+async function fetchTelegramChannels() {
+    const r = await fetch('/api/channels/fetch', { method: 'POST' });
+    const d = await r.json();
+    if (!d.success || !d.channels?.length) { showNotification(d.message || 'No channels', 'error'); return; }
+    const pick = d.channels[0];
+    if (confirm(`Add "${pick.title}"?`)) {
+        await fetch('/api/channels', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ channel_id: String(pick.id), channel_name: pick.title, parser_id: 'lorenzo', timezone: 'UTC-4' })
+        });
+        location.reload();
+    }
+}
+</script>
+{% endblock %}

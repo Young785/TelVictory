@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Help — TelVictory{% endblock %}
+{% block page_heading %}Help{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Help</h1>
+    <p>Quick setup for Telegram signals and Pocket Option copy trading.</p>
+</div>
+
+<div class="card">
+    <div class="card-header">Getting started</div>
+    <div class="card-body compact">
+        <ol style="line-height:1.8;padding-left:20px;color:var(--text)">
+            <li><strong>Telegram API</strong> — Get API ID and hash from <a href="https://my.telegram.org" target="_blank">my.telegram.org</a>, save under <a href="/settings#tab-telegram">Settings → Telegram</a>, then log in with your phone.</li>
+            <li><strong>Channels</strong> — Add each signal group on <a href="/channels">Channels</a>. Pick the parser (Lorenzo, BinaryAnalyst, MT5 alert, etc.), timezone, and platform.</li>
+            <li><strong>Pocket Option</strong> — Paste SSID under <a href="/settings#tab-platforms">Settings → Platforms</a>, use <strong>Test all connections</strong>, then <a href="/test_trade">Test Trade</a> with a small amount.</li>
+            <li><strong>Start bot</strong> — On the <a href="/">Dashboard</a>, press Start. Signals appear in <a href="/signals">Signal Inbox</a>; trades run at scheduled entry times.</li>
+            <li><strong>Monitor</strong> — Use <a href="/logs">Activity Logs</a> and <a href="/history">Trade History</a> to verify behavior.</li>
+        </ol>
+    </div>
+</div>
+
+<div class="card" style="margin-top:20px">
+    <div class="card-header">FAQ</div>
+    <div class="card-body compact">
+        <details style="margin-bottom:12px">
+            <summary style="cursor:pointer;color:var(--text-bright);font-weight:600">Should “Monitor all Telegram chats” be on?</summary>
+            <p class="hint" style="margin-top:8px">Leave it off. Only channels you add under Channels are traded. Turning it on listens to every chat (not recommended).</p>
+        </details>
+        <details style="margin-bottom:12px">
+            <summary style="cursor:pointer;color:var(--text-bright);font-weight:600">Signals detected but no trades?</summary>
+            <p class="hint" style="margin-top:8px">Check channel Auto-trade is on, platform is connected, entry time is valid, and bot is Running on the Dashboard.</p>
+        </details>
+        <details style="margin-bottom:12px">
+            <summary style="cursor:pointer;color:var(--text-bright);font-weight:600">MT5 / Deriv text-only channels?</summary>
+            <p class="hint" style="margin-top:8px">Use parser “MT5 text” with platform “None” for alerts only — no automatic orders.</p>
+        </details>
+        <details>
+            <summary style="cursor:pointer;color:var(--text-bright);font-weight:600">Telegram “two different IP” error?</summary>
+            <p class="hint" style="margin-top:8px">Use one server session only. Re-login under Settings → Telegram if the session was used elsewhere.</p>
+        </details>
+    </div>
+</div>
+{% endblock %}

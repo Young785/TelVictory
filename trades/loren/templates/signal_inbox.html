@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Signal Inbox — TelVictory{% endblock %}
+{% block page_heading %}Signal Inbox{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Signal inbox</h1>
+    <p>Parsed signals, scheduled trades, MT5 alerts, and monitor-only detections from your channels.</p>
+    <div class="page-actions">
+        <a href="/channels" class="btn btn-secondary" style="text-decoration:none">Manage channels</a>
+        <a href="/logs" class="btn btn-secondary" style="text-decoration:none">Activity logs</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Source</th>
+                    <th>Pair</th>
+                    <th>Dir</th>
+                    <th>Entry</th>
+                    <th>Parser</th>
+                    <th>Platform</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in signals %}
+                <tr>
+                    <td style="white-space:nowrap;font-size:12px">{{ (s.created_at or '')[:19] }}</td>
+                    <td>{{ s.source or '—' }}</td>
+                    <td><strong>{{ s.pair or '—' }}</strong></td>
+                    <td>{{ s.direction or '—' }}</td>
+                    <td>{{ s.entry_time or '—' }}</td>
+                    <td>{{ s.parser_id or '—' }}</td>
+                    <td>{{ s.platform_id or '—' }}</td>
+                    <td><span class="badge badge-pending">{{ s.status or '—' }}</span></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="8"><div class="empty-state"><p>No signals yet. Start the bot from Dashboard and add channels.</p></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

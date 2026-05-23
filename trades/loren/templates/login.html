@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign in — TelVictory</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=3">
+</head>
+<body class="app-body">
+<div class="login-page">
+    <div class="login-box">
+        <div class="logo">Tel<span>Victory</span></div>
+        <div class="subtitle">Sign in to manage signal copy trading</div>
+        <div class="card">
+            <div class="card-body">
+                <div class="login-error" id="error"></div>
+                <form id="loginForm" onsubmit="return handleLogin(event)">
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input class="form-control" type="text" id="username" required autocomplete="username" placeholder="admin">
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input class="form-control" type="password" id="password" required autocomplete="current-password">
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width:100%" id="submitBtn">Sign in</button>
+                </form>
+            </div>
+        </div>
+        <p class="hint" style="text-align:center;margin-top:16px">Default: admin / admin (change in .env)</p>
+    </div>
+</div>
+<script>
+function handleLogin(e) {
+    e.preventDefault();
+    const errorDiv = document.getElementById('error');
+    const submitBtn = document.getElementById('submitBtn');
+    errorDiv.classList.remove('show');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Signing in...';
+    fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            username: document.getElementById('username').value,
+            password: document.getElementById('password').value
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) window.location.href = data.redirect || '/';
+        else {
+            errorDiv.textContent = data.message || 'Invalid credentials';
+            errorDiv.classList.add('show');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Sign in';
+        }
+    })
+    .catch(() => {
+        errorDiv.textContent = 'Connection error. Try again.';
+        errorDiv.classList.add('show');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Sign in';
+    });
+    return false;
+}
+</script>
+</body>
+</html>

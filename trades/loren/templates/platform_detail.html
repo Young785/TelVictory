@@ -1,0 +1,725 @@
+{% extends "base.html" %}
+
+{% block title %}{{ platform_name.replace('_', ' ').title() }} - Platform Details{% endblock %}
+
+{% block content %}
+<!-- Platform Header -->
+<div class="section-header">
+    <div>
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 4px;">
+            <span style="font-size: 28px;">{{ '🔴' if not status.connected else '🟢' }}</span>
+            <span style="font-size: 24px; font-weight: 700; color: var(--text-bright);">{{ platform_name.replace('_', ' ').title() }}</span>
+            <span class="badge badge-{{ 'win' if status.connected else 'loss' if status.error_message else 'pending' }}" style="font-size: 12px;">
+                {{ 'Connected' if status.connected else 'Error' if status.error_message else 'Disconnected' }}
+            </span>
+        </div>
+        <div style="font-size: 13px; color: #8b949e;">{{ status.platform_name }} Platform</div>
+    </div>
+    <div style="display: flex; gap: 12px;">
+        <button onclick="window.location.href='/platforms'" class="btn btn-secondary" style="font-size: 13px;">← All Platforms</button>
+    </div>
+</div>
+
+<!-- Balance Overview -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+    <div class="card">
+        <div class="card-body" style="text-align: center; padding: 24px;">
+            <div style="font-size: 12px; color: #8b949e; margin-bottom: 8px;">Current Balance</div>
+            <div style="font-size: 36px; font-weight: 700; color: var(--text-bright);">${{ '%.2f' % status.balance }}</div>
+            <div style="font-size: 13px; color: #8b949e; margin-top: 8px;">{{ status.currency }}</div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-body" style="text-align: center; padding: 24px;">
+            <div style="font-size: 12px; color: #8b949e; margin-bottom: 8px;">Account Type</div>
+            <div style="font-size: 28px; font-weight: 600; color: var(--primary);">{{ status.account_type.title() }}</div>
+            {% if status.simulation_mode %}
+            <div style="font-size: 12px; color: var(--warning); margin-top: 8px;">⚠️ Simulation Mode</div>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-body" style="text-align: center; padding: 24px;">
+            <div style="font-size: 12px; color: #8b949e; margin-bottom: 8px;">Platform Trades</div>
+            <div style="font-size: 36px; font-weight: 700; color: var(--text-bright);">{{ platform_trades|length }}</div>
+            <div style="font-size: 13px; color: #8b949e; margin-top: 8px;">executed</div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-body" style="text-align: center; padding: 24px;">
+            <div style="font-size: 12px; color: #8b949e; margin-bottom: 8px;">Status</div>
+            <div style="font-size: 18px; font-weight: 600; color: {{ 'var(--success)' if status.connected else 'var(--danger)' }};">
+                {{ 'Online' if status.connected else 'Offline' }}
+            </div>
+            <div style="font-size: 11px; color: #8b949e; margin-top: 8px;">
+                {{ status.last_updated.split('T')[1][:8] if status.last_updated else 'Never' }}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Connection Controls -->
+<div class="card" style="margin-bottom: 24px;">
+    <div class="card-header">Connection Controls</div>
+    <div class="card-body">
+        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <button id="btn-connect" onclick="connectPlatform('{{ platform_name }}')" class="btn btn-primary" {{ 'disabled' if status.connected }}>
+                <span class="btn-text">{{ '✓ Connected' if status.connected else 'Connect' }}</span>
+            </button>
+            <button id="btn-disconnect" onclick="disconnectPlatform('{{ platform_name }}')" class="btn btn-secondary" style="background: var(--bg-card); color: var(--text);">
+                <span class="btn-text">Disconnect</span>
+            </button>
+            <button id="btn-refresh" onclick="refreshStatus()" class="btn btn-secondary">
+                <span class="btn-text">🔄 Refresh</span>
+            </button>
+            <a href="/settings#telegram-channels" class="btn btn-secondary" style="text-decoration: none;" onclick="window.location.href='/settings'; return false;">
+                ⚙️ Edit Credentials
+            </a>
+        </div>
+        {% if status.error_message %}
+        <div style="background: rgba(248, 81, 73, 0.15); color: var(--danger); padding: 12px; border-radius: 8px; font-size: 13px; margin-top: 16px;">
+            <strong>Error:</strong> {{ status.error_message }}
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Trading Settings -->
+<div class="section-title">💰 Trading Settings</div>
+<div class="card" style="margin-bottom: 24px;">
+    <div class="card-header">Platform-Specific Amount & Rules</div>
+    <div class="card-body">
+        <form id="platform-settings-form" onsubmit="return savePlatformSettings(event)">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 20px;">
+                <div>
+                    <label style="display: block; font-size: 12px; color: #8b949e; margin-bottom: 8px;">
+                        Default Trade Amount ($)
+                        <span style="color: var(--primary);">*</span>
+                    </label>
+                    <input type="number" name="default_amount" value="{{ platform_config.default_amount or config.DEFAULT_AMOUNT }}" 
+                        step="0.1" min="1" required
+                        style="width: 100%; padding: 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px;">
+                </div>
+                <div>
+                    <label style="display: block; font-size: 12px; color: #8b949e; margin-bottom: 8px;">Currency</label>
+                    <select name="currency" 
+                        style="width: 100%; padding: 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px;">
+                        <option value="USD" {{ 'selected' if (platform_config.currency or config.CURRENCY) == 'USD' }}>USD</option>
+                        <option value="EUR" {{ 'selected' if (platform_config.currency or config.CURRENCY) == 'EUR' }}>EUR</option>
+                        <option value="GBP" {{ 'selected' if (platform_config.currency or config.CURRENCY) == 'GBP' }}>GBP</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="display: block; font-size: 12px; color: #8b949e; margin-bottom: 8px;">Max Martingale Levels</label>
+                    <input type="number" name="max_martingale" value="{{ platform_config.max_martingale or config.MAX_MARTINGALE_LEVELS }}" 
+                        min="0" max="5"
+                        style="width: 100%; padding: 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px;">
+                </div>
+                <div>
+                    <label style="display: block; font-size: 12px; color: #8b949e; margin-bottom: 8px;">Martingale Multiplier</label>
+                    <input type="number" name="martingale_multiplier" value="{{ platform_config.martingale_multiplier or config.MARTINGALE_MULTIPLIER }}" 
+                        step="0.1" min="1"
+                        style="width: 100%; padding: 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px;">
+                </div>
+            </div>
+            
+            <!-- Trading Rules -->
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; font-size: 12px; color: #8b949e; margin-bottom: 12px; font-weight: 600;">Trading Rules</label>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 12px; background: var(--bg-card); border-radius: 8px;">
+                        <input type="checkbox" name="allow_otc" {{ 'checked' if platform_config.allow_otc != false }}>
+                        <span style="font-size: 13px;">Allow OTC Trading</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 12px; background: var(--bg-card); border-radius: 8px;">
+                        <input type="checkbox" name="auto_trading" {{ 'checked' if platform_config.auto_trading != false }}>
+                        <span style="font-size: 13px;">Auto-Execute Signals</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 12px; background: var(--bg-card); border-radius: 8px;">
+                        <input type="checkbox" name="use_martingale" {{ 'checked' if platform_config.use_martingale != false }}>
+                        <span style="font-size: 13px;">Enable Martingale</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 12px; background: var(--bg-card); border-radius: 8px;">
+                        <input type="checkbox" name="demo_mode" {{ 'checked' if platform_config.demo_mode or status.simulation_mode }}>
+                        <span style="font-size: 13px;">Demo/Simulation Mode</span>
+                    </label>
+                </div>
+            </div>
+            
+            <div style="display: flex; gap: 12px;">
+                <button type="submit" class="btn btn-primary" id="btn-save-settings"><span class="btn-text">💾 Save Settings</span></button>
+                <button type="button" onclick="resetToDefaults()" class="btn btn-secondary" id="btn-reset-defaults"><span class="btn-text">↩️ Reset to Defaults</span></button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Recent Trades -->
+<div class="section-title">📊 Recent Trades on {{ platform_name.replace('_', ' ').title() }}</div>
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <span>Trade History ({{ platform_trades|length }} total)</span>
+        <div style="display: flex; gap: 8px;">
+            <button onclick="refreshTrades()" class="btn btn-secondary" id="btn-refresh-trades" style="font-size: 12px; padding: 6px 12px;"><span class="btn-text">🔄 Refresh</span></button>
+            <button onclick="exportPlatformTrades()" class="btn btn-secondary" id="btn-export-trades" style="font-size: 12px; padding: 6px 12px;"><span class="btn-text">📥 Export</span></button>
+        </div>
+    </div>
+    <div class="card-body scrollable" style="max-height: 400px;">
+        {% if platform_trades %}
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Pair</th>
+                    <th>Direction</th>
+                    <th>Amount</th>
+                    <th>Result</th>
+                    <th>Profit</th>
+                    <th>Time</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for trade in platform_trades|reverse %}
+                <tr>
+                    <td>#{{ trade.id }}</td>
+                    <td><strong>{{ trade.pair or '-' }}</strong></td>
+                    <td>{{ trade.direction or '-' }}</td>
+                    <td>${{ trade.amount or 0 }}</td>
+                    <td>
+                        <span class="badge badge-{{ trade.result or 'pending' }}">
+                            {{ trade.result or 'pending' }}
+                        </span>
+                    </td>
+                    {% set p = (trade.profit or 0)|float %}
+                    <td class="{{ 'green' if p > 0 else 'red' if p < 0 else '' }}">
+                        {{ '+' if p > 0 }}${{ "%.2f"|format(p) }}
+                    </td>
+                    <td>{{ trade.created_at }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+            <div class="empty-state-icon">📈</div>
+            <p>No trades yet on this platform</p>
+            <p style="font-size: 12px; margin-top: 8px;">Start the bot to execute trades</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Connected Telegram Channels -->
+<div class="section-title" style="margin-top: 24px;">📡 Connected Telegram Channels</div>
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <span>📡 Channels Monitoring Signals</span>
+        <span id="channels-count" style="font-size: 12px; padding: 4px 12px; border-radius: 12px; background: var(--bg-card);">0 channels</span>
+    </div>
+    <div class="card-body">
+        <p style="font-size: 13px; color: #8b949e; margin-bottom: 16px;">
+            Add Telegram channels to monitor for trading signals. The bot will listen to all active channels.
+        </p>
+
+        <!-- Add Channel Form -->
+        <div style="background: var(--bg-card); padding: 16px; border-radius: 8px; margin-bottom: 20px; border: 1px solid var(--border);">
+            <div style="display: grid; grid-template-columns: 2fr 1fr auto; gap: 12px; align-items: end;">
+                <div>
+                    <label style="display: block; font-size: 12px; color: #8b949e; margin-bottom: 8px;">Channel ID / Username / Invite Link <span style="color: var(--danger)">*</span></label>
+                    <input type="text" id="new_channel_id"
+                        placeholder="@channelname, https://t.me/+hash, or channel ID"
+                        style="width: 100%; padding: 10px; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 14px;">
+                </div>
+                <div>
+                    <label style="display: block; font-size: 12px; color: #8b949e; margin-bottom: 8px;">Channel Name (optional)</label>
+                    <input type="text" id="new_channel_name"
+                        placeholder="Display name"
+                        style="width: 100%; padding: 10px; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 14px;">
+                </div>
+                <div>
+                    <button onclick="resolveAndAddChannel()" class="btn btn-primary" id="btn-resolve-channel" style="height: 40px; white-space: nowrap;">
+                        <span class="btn-text">🔍 Resolve & Add</span>
+                    </button>
+                </div>
+            </div>
+            <div id="channel-resolve-status" style="margin-top: 8px; font-size: 12px; display: none;"></div>
+        </div>
+
+        <!-- Fetch from Telegram Button -->
+        <div style="display: flex; gap: 12px; margin-bottom: 20px;">
+            <button onclick="fetchTelegramChannels()" class="btn btn-secondary" id="btn-fetch-channels">
+                <span class="btn-text">🔄 Fetch My Channels from Telegram</span>
+            </button>
+        </div>
+
+        <!-- Channels List -->
+        <div id="channels-list" style="max-height: 400px; overflow-y: auto;">
+            <div class="empty-state" style="padding: 40px;">
+                <div class="empty-state-icon">📡</div>
+                <p>No channels configured</p>
+                <p style="font-size: 12px; margin-top: 8px;">Add a channel to start receiving signals</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Fetched Channels Modal -->
+<div id="channels-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center;">
+    <div style="background: var(--bg-card); border-radius: 12px; max-width: 600px; width: 90%; max-height: 80vh; overflow: hidden;">
+        <div style="padding: 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+            <div style="font-size: 16px; font-weight: 600;">📢 Select Channels to Add</div>
+            <button onclick="closeChannelsModal()" style="background: none; border: none; color: var(--text); font-size: 20px; cursor: pointer;">×</button>
+        </div>
+        <div id="channels-modal-content" style="padding: 20px; max-height: 50vh; overflow-y: auto;">
+            <!-- Fetched channels will appear here -->
+        </div>
+        <div style="padding: 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 12px;">
+            <button onclick="closeChannelsModal()" class="btn btn-secondary">Cancel</button>
+            <button onclick="addSelectedChannels()" class="btn btn-primary">Add Selected Channels</button>
+        </div>
+    </div>
+</div>
+
+<!-- Signal Format Reference -->
+<div class="section-title" style="margin-top: 24px;">� Expected Signal Format</div>
+<div class="card">
+    <div class="card-header">Signal Format Reference</div>
+    <div class="card-body">
+        <div style="background: var(--bg-card); padding: 16px; border-radius: 8px; margin-bottom: 16px; font-family: monospace; font-size: 13px; line-height: 1.6;">
+            <div style="color: var(--text-bright); margin-bottom: 8px;">🇳🇿 NZD/USD 🇺🇸 OTC</div>
+            <div>🕘 Expiration 5M</div>
+            <div>⏺ Entry at 15:45</div>
+            <div style="color: var(--danger);">🟥 SELL</div>
+            <div style="margin: 8px 0;">🔽 Martingale levels</div>
+            <div>1️⃣ level at 15:50</div>
+            <div>2️⃣ level at 15:55</div>
+            <div>3️⃣ level at 16:00</div>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px;">
+            <div style="background: var(--bg-card); padding: 12px; border-radius: 6px;">
+                <div style="font-size: 11px; color: #8b949e; text-transform: uppercase; margin-bottom: 4px;">Currency Pair</div>
+                <div style="font-size: 13px; color: var(--text-bright);">EUR/USD, GBP/USD, etc.</div>
+            </div>
+            <div style="background: var(--bg-card); padding: 12px; border-radius: 6px;">
+                <div style="font-size: 11px; color: #8b949e; text-transform: uppercase; margin-bottom: 4px;">Expiration</div>
+                <div style="font-size: 13px; color: var(--text-bright);">1M, 5M, 15M, 1H</div>
+            </div>
+            <div style="background: var(--bg-card); padding: 12px; border-radius: 6px;">
+                <div style="font-size: 11px; color: #8b949e; text-transform: uppercase; margin-bottom: 4px;">Entry Time</div>
+                <div style="font-size: 13px; color: var(--text-bright);">HH:MM (24h format)</div>
+            </div>
+            <div style="background: var(--bg-card); padding: 12px; border-radius: 6px;">
+                <div style="font-size: 11px; color: #8b949e; text-transform: uppercase; margin-bottom: 4px;">Direction</div>
+                <div style="font-size: 13px; color: var(--text-bright);">BUY or SELL</div>
+            </div>
+        </div>
+        <p style="font-size: 13px; color: #8b949e; line-height: 1.5;">
+            The bot parses signals with: <strong style="color: var(--text-bright);">Currency Pair</strong>,
+            <strong style="color: var(--text-bright);">Expiration</strong>,
+            <strong style="color: var(--text-bright);">Entry Time</strong>,
+            <strong style="color: var(--text-bright);">Direction (BUY/SELL)</strong>,
+            and optional <strong style="color: var(--text-bright);">Martingale Levels</strong>.
+            Add "OTC" flag for OTC markets.
+        </p>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+function connectPlatform(platform) {
+    const btn = document.getElementById('btn-connect');
+    LoadingUtils.setButtonLoading(btn, 'Connecting...');
+    fetch('/api/platform/connect', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({platform: platform})
+    }).then(r => r.json()).then(d => {
+        LoadingUtils.resetButton(btn);
+        if (d.success) {
+            showNotification('Connected successfully!', 'success');
+            setTimeout(() => location.reload(), 500);
+        } else {
+            showNotification('Failed: ' + d.message, 'error');
+        }
+    }).catch(e => {
+        LoadingUtils.resetButton(btn);
+        showNotification('Error: ' + e.message, 'error');
+    });
+}
+
+function disconnectPlatform(platform) {
+    const btn = document.getElementById('btn-disconnect');
+    LoadingUtils.setButtonLoading(btn, 'Disconnecting...');
+    fetch('/api/platform/disconnect', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({platform: platform})
+    }).then(r => r.json()).then(d => {
+        LoadingUtils.resetButton(btn);
+        if (d.success) {
+            showNotification('Disconnected', 'success');
+            setTimeout(() => location.reload(), 500);
+        } else {
+            showNotification('Failed: ' + d.message, 'error');
+        }
+    }).catch(e => {
+        LoadingUtils.resetButton(btn);
+        showNotification('Error: ' + e.message, 'error');
+    });
+}
+
+function refreshStatus() {
+    const btn = document.getElementById('btn-refresh');
+    LoadingUtils.setButtonLoading(btn, 'Refreshing...');
+    fetch('/api/platform/active').then(r => r.json()).then(d => {
+        location.reload();
+    }).catch(e => {
+        LoadingUtils.resetButton(btn);
+        showNotification('Error: ' + e.message, 'error');
+    });
+}
+
+function savePlatformSettings(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn-save-settings');
+    LoadingUtils.setButtonLoading(btn, 'Saving...');
+    const formData = new FormData(e.target);
+    const data = Object.fromEntries(formData);
+
+    // Convert checkboxes to boolean
+    data.allow_otc = formData.get('allow_otc') === 'on';
+    data.auto_trading = formData.get('auto_trading') === 'on';
+    data.use_martingale = formData.get('use_martingale') === 'on';
+    data.demo_mode = formData.get('demo_mode') === 'on';
+
+    fetch('/api/platform/{{ platform_name }}/settings', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    }).then(r => r.json()).then(d => {
+        LoadingUtils.resetButton(btn);
+        if (d.success) {
+            showNotification('Settings saved!', 'success');
+        } else {
+            showNotification('Failed: ' + d.message, 'error');
+        }
+    }).catch(e => {
+        LoadingUtils.resetButton(btn);
+        showNotification('Error: ' + e.message, 'error');
+    });
+    return false;
+}
+
+function resetToDefaults() {
+    if (confirm('Reset all settings to global defaults?')) {
+        const btn = document.getElementById('btn-reset-defaults');
+        LoadingUtils.setButtonLoading(btn, 'Resetting...');
+        document.querySelector('input[name="default_amount"]').value = '{{ config.DEFAULT_AMOUNT }}';
+        document.querySelector('select[name="currency"]').value = '{{ config.CURRENCY }}';
+        document.querySelector('input[name="max_martingale"]').value = '{{ config.MAX_MARTINGALE_LEVELS }}';
+        document.querySelector('input[name="martingale_multiplier"]').value = '{{ config.MARTINGALE_MULTIPLIER }}';
+        LoadingUtils.resetButton(btn);
+        showNotification('Reset to defaults - click Save to apply', 'warning');
+    }
+}
+
+function refreshTrades() {
+    location.reload();
+}
+
+function exportPlatformTrades() {
+    const rows = document.querySelectorAll('table tbody tr');
+    let csv = 'ID,Pair,Direction,Amount,Result,Profit,Time\n';
+    rows.forEach(row => {
+        const cells = row.querySelectorAll('td');
+        csv += Array.from(cells).map(c => c.textContent.trim()).join(',') + '\n';
+    });
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = '{{ platform_name }}_trades_' + new Date().toISOString().split('T')[0] + '.csv';
+    a.click();
+}
+
+function showNotification(message, type) {
+    const div = document.createElement('div');
+    div.style.cssText = `position: fixed; top: 20px; right: 20px; padding: 12px 20px; border-radius: 6px; color: white; font-size: 14px; z-index: 1000;`;
+    div.style.background = type === 'success' ? 'var(--success)' : (type === 'error' ? 'var(--danger)' : 'var(--warning)');
+    div.textContent = message;
+    document.body.appendChild(div);
+    setTimeout(() => div.remove(), 3000);
+}
+
+// Auto-refresh status every 10 seconds
+setInterval(() => {
+    fetch('/api/platform/active').then(r => r.json()).then(d => {
+        // Could update UI dynamically
+    });
+}, 10000);
+
+// Telegram Channel Management
+let fetchedChannels = [];
+
+// Load channels on page load
+document.addEventListener('DOMContentLoaded', loadChannels);
+
+function loadChannels() {
+    fetch('/api/channels')
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) {
+                renderChannels(d.channels);
+            }
+        });
+}
+
+function renderChannels(channels) {
+    const container = document.getElementById('channels-list');
+    const countBadge = document.getElementById('channels-count');
+
+    if (!container) return;
+
+    countBadge.textContent = `${channels.length} channel${channels.length !== 1 ? 's' : ''}`;
+
+    if (channels.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state" style="padding: 40px;">
+                <div class="empty-state-icon">📡</div>
+                <p>No channels configured</p>
+                <p style="font-size: 12px; margin-top: 8px;">Add a channel to start receiving signals</p>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = channels.map(ch => `
+        <div style="display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--bg-card); border-radius: 8px; margin-bottom: 8px; border: 1px solid var(--border);">
+            <div style="flex: 1;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 16px;">�</span>
+                    <span style="font-weight: 600; color: var(--text-bright);">${ch.channel_name || 'Unknown'}</span>
+                    ${ch.is_active !== false ?
+                        '<span style="font-size: 11px; padding: 2px 8px; background: rgba(46, 160, 67, 0.2); color: var(--success); border-radius: 10px;">Active</span>' :
+                        '<span style="font-size: 11px; padding: 2px 8px; background: var(--bg-dark); color: #8b949e; border-radius: 10px;">Paused</span>'
+                    }
+                </div>
+                <div style="font-size: 12px; color: #8b949e; margin-top: 4px; font-family: monospace;">
+                    ${ch.channel_id}
+                </div>
+                ${ch.description ? `<div style="font-size: 11px; color: #6b7280; margin-top: 2px;">${ch.description}</div>` : ''}
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button onclick="toggleChannel(${ch.id}, ${ch.is_active === false})" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
+                    ${ch.is_active !== false ? '⏸ Pause' : '▶ Activate'}
+                </button>
+                <button onclick="deleteChannel(${ch.id})" class="btn btn-danger" style="font-size: 12px; padding: 6px 12px;">
+                    🗑️
+                </button>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function resolveAndAddChannel() {
+    const channelId = document.getElementById('new_channel_id').value.trim();
+    const channelName = document.getElementById('new_channel_name').value.trim();
+    const statusDiv = document.getElementById('channel-resolve-status');
+    const btn = document.getElementById('btn-resolve-channel');
+
+    if (!channelId) {
+        showNotification('Please enter a channel ID or invite link', 'error');
+        return;
+    }
+
+    LoadingUtils.setButtonLoading(btn, 'Resolving...');
+    statusDiv.style.display = 'block';
+    statusDiv.innerHTML = '<span style="color: var(--warning);">🔍 Resolving channel...</span>';
+
+    try {
+        const resolveRes = await fetch('/api/channels/resolve', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({identifier: channelId})
+        });
+        const resolveData = await resolveRes.json();
+
+        let finalName = channelName;
+        let finalId = channelId;
+
+        if (resolveData.success) {
+            finalName = channelName || resolveData.channel.title;
+            finalId = resolveData.channel.username || resolveData.channel.id || channelId;
+            statusDiv.innerHTML = `<span style="color: var(--success);">✅ Resolved: ${resolveData.channel.title}</span>`;
+        } else {
+            statusDiv.innerHTML = `<span style="color: var(--warning);">⚠️ Could not resolve, will use provided info</span>`;
+        }
+
+        const addRes = await fetch('/api/channels', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                channel_id: finalId,
+                channel_name: finalName || 'Unknown',
+                description: '',
+                is_active: true
+            })
+        });
+        const addData = await addRes.json();
+
+        LoadingUtils.resetButton(btn);
+        if (addData.success) {
+            showNotification('Channel added successfully!', 'success');
+            document.getElementById('new_channel_id').value = '';
+            document.getElementById('new_channel_name').value = '';
+            statusDiv.style.display = 'none';
+            loadChannels();
+        } else {
+            statusDiv.innerHTML = `<span style="color: var(--danger);">❌ ${addData.message}</span>`;
+            showNotification(addData.message, 'error');
+        }
+    } catch (e) {
+        LoadingUtils.resetButton(btn);
+        statusDiv.innerHTML = `<span style="color: var(--danger);">❌ Error: ${e.message}</span>`;
+        showNotification('Failed to add channel', 'error');
+    }
+}
+
+function deleteChannel(id) {
+    if (!confirm('Are you sure you want to remove this channel?')) return;
+
+    fetch(`/api/channels/${id}`, {method: 'DELETE'})
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) {
+                showNotification('Channel removed', 'success');
+                loadChannels();
+            } else {
+                showNotification(d.message, 'error');
+            }
+        });
+}
+
+function toggleChannel(id, activate) {
+    fetch(`/api/channels/${id}/toggle`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({is_active: activate})
+    })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) {
+                showNotification(activate ? 'Channel activated' : 'Channel paused', 'success');
+                loadChannels();
+            } else {
+                showNotification(d.message, 'error');
+            }
+        });
+}
+
+async function fetchTelegramChannels() {
+    const btn = document.getElementById('btn-fetch-channels');
+    LoadingUtils.setButtonLoading(btn, 'Fetching...');
+    showNotification('Fetching channels from Telegram...', 'warning');
+
+    try {
+        const res = await fetch('/api/channels/fetch', {method: 'POST'});
+        const data = await res.json();
+
+        LoadingUtils.resetButton(btn);
+        if (data.success) {
+            fetchedChannels = data.channels;
+            showModalChannels(fetchedChannels);
+        } else {
+            showNotification(data.message || 'Failed to fetch channels', 'error');
+        }
+    } catch (e) {
+        LoadingUtils.resetButton(btn);
+        showNotification('Failed to fetch channels: ' + e.message, 'error');
+    }
+}
+
+function showModalChannels(channels) {
+    const modal = document.getElementById('channels-modal');
+    const content = document.getElementById('channels-modal-content');
+
+    if (channels.length === 0) {
+        content.innerHTML = '<p style="text-align: center; color: #8b949e;">No channels found in your Telegram account.</p>';
+    } else {
+        content.innerHTML = channels.map((ch, idx) => `
+            <div style="display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--bg-dark); border-radius: 8px; margin-bottom: 8px;">
+                <input type="checkbox" id="ch-${idx}" value="${idx}" style="width: 18px; height: 18px;">
+                <label for="ch-${idx}" style="flex: 1; cursor: pointer; display: flex; align-items: center; gap: 12px;">
+                    <span style="font-size: 20px;">📢</span>
+                    <div style="flex: 1;">
+                        <div style="font-weight: 600; color: var(--text-bright);">${ch.title}</div>
+                        <div style="font-size: 12px; color: #8b949e;">
+                            ${ch.username ? '@' + ch.username : 'ID: ' + ch.id}
+                            ${ch.participants_count ? ' • ' + ch.participants_count + ' members' : ''}
+                            ${ch.is_group ? ' • Group' : ' • Channel'}
+                        </div>
+                    </div>
+                </label>
+            </div>
+        `).join('');
+    }
+
+    modal.style.display = 'flex';
+}
+
+function closeChannelsModal() {
+    document.getElementById('channels-modal').style.display = 'none';
+}
+
+async function addSelectedChannels() {
+    const checkboxes = document.querySelectorAll('#channels-modal-content input[type="checkbox"]:checked');
+    const indices = Array.from(checkboxes).map(cb => parseInt(cb.value));
+
+    if (indices.length === 0) {
+        showNotification('Please select at least one channel', 'error');
+        return;
+    }
+
+    let added = 0;
+    let failed = 0;
+
+    for (const idx of indices) {
+        const ch = fetchedChannels[idx];
+        try {
+            const res = await fetch('/api/channels', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    channel_id: ch.username || ch.id,
+                    channel_name: ch.title,
+                    description: ch.is_group ? 'Group' : 'Channel',
+                    is_active: true
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                added++;
+            } else if (data.message && data.message.includes('already exists')) {
+                added++;
+            } else {
+                failed++;
+            }
+        } catch (e) {
+            failed++;
+        }
+    }
+
+    if (added > 0) {
+        showNotification(`Added ${added} channel(s)`, 'success');
+        loadChannels();
+    }
+    if (failed > 0) {
+        showNotification(`${failed} channel(s) failed`, 'error');
+    }
+
+    closeChannelsModal();
+}
+</script>
+{% endblock %}
+
+{% endblock %}

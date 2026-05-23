@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% block title %}Trade History — TelVictory{% endblock %}
+{% block page_heading %}Trade History{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Trade history</h1>
+    <p>All executed trades across connected platforms.</p>
+</div>
+<div class="section-header">
+    <div class="section-title" style="margin:0">Filters</div>
+    <div style="display: flex; gap: 12px;">
+        <select id="platform-filter" onchange="filterTrades()" style="background: var(--bg-card); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; font-size: 13px;">
+            <option value="">All Platforms</option>
+            {% for name, status in platforms.items() %}
+            <option value="{{ name }}">{{ name.replace('_', ' ').title() }}</option>
+            {% endfor %}
+        </select>
+        <button onclick="exportTrades()" class="btn btn-secondary" style="font-size: 13px;">Export CSV</button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">All Trades ({{ trades|length }})</div>
+    <div class="card-body scrollable">
+        {% if trades %}
+        <table id="trades-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Platform</th>
+                    <th>Pair</th>
+                    <th>Direction</th>
+                    <th>Amount</th>
+                    <th>Result</th>
+                    <th>Profit</th>
+                    <th>Time</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for trade in trades|reverse %}
+                <tr data-platform="{{ trade.get('platform', 'unknown') }}">
+                    <td>#{{ trade.get('id', '-') }}</td>
+                    <td><span class="badge badge-pending">{{ (trade.get('platform', 'unknown')).replace('_', ' ').title() }}</span></td>
+                    <td><strong>{{ trade.get('pair', '-') }}</strong></td>
+                    <td>{{ trade.get('direction', '-') }}</td>
+                    <td>${{ trade.get('amount', 0) or 0 }}</td>
+                    <td>
+                        <span class="badge badge-{{ trade.get('result', 'pending') or 'pending' }}">
+                            {{ trade.get('result', 'pending') or 'pending' }}
+                        </span>
+                    </td>
+                    {% set profit = (trade.get('profit', 0) or 0)|float %}
+                    <td class="{{ 'green' if profit > 0 else 'red' if profit < 0 else '' }}">
+                        {{ '+' if profit > 0 }}${{ "%.2f"|format(profit) }}
+                    </td>
+                    <td>{{ trade.get('created_at', '-') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+            <div class="empty-state-icon">📊</div>
+            <p>No trades recorded yet</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+function filterTrades() {
+    const platform = document.getElementById('platform-filter').value;
+    const rows = document.querySelectorAll('#trades-table tbody tr');
+    rows.forEach(row => {
+        if (!platform || row.dataset.platform === platform) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
+
+function exportTrades() {
+    const rows = document.querySelectorAll('#trades-table tbody tr');
+    let csv = 'ID,Platform,Pair,Direction,Amount,Result,Profit,Time\n';
+    rows.forEach(row => {
+        if (row.style.display !== 'none') {
+            const cells = row.querySelectorAll('td');
+            csv += Array.from(cells).map(c => c.textContent.trim()).join(',') + '\n';
+        }
+    });
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'trades_' + new Date().toISOString().split('T')[0] + '.csv';
+    a.click();
+}
+</script>
+{% endblock %}
+
+<div class="section-title" style="margin-top: 24px;">Signal History</div>
+<div class="card">
+    <div class="card-header">Received Signals ({{ signals|length }})</div>
+    <div class="card-body scrollable">
+        {% if signals %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Pair</th>
+                    <th>Direction</th>
+                    <th>Entry Time</th>
+                    <th>Status</th>
+                    <th>Received</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for signal in signals|reverse %}
+                <tr>
+                    <td><strong>{{ signal.get('pair', '-') }}</strong></td>
+                    <td>{{ signal.get('direction', '-') }}</td>
+                    <td>{{ signal.get('entry_time', '-') }}</td>
+                    <td><span class="badge badge-pending">received</span></td>
+                    <td>{{ signal.get('created_at', '-') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+            <div class="empty-state-icon">📡</div>
+            <p>No signals received yet</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

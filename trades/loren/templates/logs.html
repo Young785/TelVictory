@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block title %}Activity Logs — TelVictory{% endblock %}
+{% block page_heading %}Activity Logs{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Activity logs</h1>
+    <p>Raw Telegram messages, parsed signals, trades, and errors.</p>
+</div>
+
+<!-- Filter Buttons -->
+<div style="display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap;">
+    <a href="/logs?filter=all&channel={{ channel_filter }}" class="btn btn-{{ 'primary' if filter_type == 'all' else 'secondary' }}">
+        📋 All Telegram Logs
+    </a>
+    <a href="/logs?filter=messages&channel={{ channel_filter }}" class="btn btn-{{ 'primary' if filter_type == 'messages' else 'secondary' }}">
+        📩 Raw Messages
+    </a>
+    <a href="/logs?filter=signals&channel={{ channel_filter }}" class="btn btn-{{ 'primary' if filter_type == 'signals' else 'secondary' }}">
+        🎯 Signals Only
+    </a>
+</div>
+
+<!-- Channel Selector -->
+<div style="display: flex; gap: 12px; margin-bottom: 20px; align-items: center;">
+    <span style="font-size: 13px; color: #8b949e;">Channel:</span>
+    <select id="channel-select" onchange="filterByChannel(this.value)"
+        style="padding: 8px 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; min-width: 200px;">
+        <option value="all" {{ 'selected' if channel_filter == 'all' }}>📡 All Channels</option>
+        {% for ch in configured_channels %}
+        <option value="{{ ch.name }}" {{ 'selected' if channel_filter == ch.name }}>
+            📢 {{ ch.name }} {% if not ch.is_active %}(paused){% endif %}
+        </option>
+        {% endfor %}
+        {% for ch_name in channels_in_logs %}
+        {% if ch_name not in configured_channels|map(attribute='name')|list %}
+        <option value="{{ ch_name }}" {{ 'selected' if channel_filter == ch_name }}>
+            💬 {{ ch_name }} (from logs)
+        </option>
+        {% endif %}
+        {% endfor %}
+    </select>
+    {% if channel_filter != 'all' %}
+    <a href="/logs?filter={{ filter_type }}&channel=all" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
+        ✕ Clear Filter
+    </a>
+    {% endif %}
+    <span style="font-size: 12px; color: #8b949e; margin-left: auto;">
+        {{ configured_channels|length }} configured • {{ channels_in_logs|length }} seen in logs
+    </span>
+</div>
+
+<script>
+function filterByChannel(channel) {
+    window.location.href = '/logs?filter={{ filter_type }}&channel=' + encodeURIComponent(channel);
+}
+</script>
+
+<div class="card">
+    <div class="card-header">
+        Log Entries ({{ logs|length }} total)
+        <span style="float: right; font-size: 12px; color: #8b949e;">
+            {{ 'All Telegram' if filter_type == 'all' else 'Raw Messages' if filter_type == 'messages' else 'Signals Only' }}
+            {% if channel_filter != 'all' %} • Channel: {{ channel_filter }}{% endif %}
+        </span>
+    </div>
+    <div class="card-body scrollable">
+        {% if logs %}
+        <div class="table-wrap" style="font-family: monospace; font-size: 12px;">
+            {% for log in logs|reverse %}
+            <div style="padding: 10px 0; border-bottom: 1px solid var(--border); display: flex; gap: 12px;">
+                <span style="color: #8b949e; white-space: nowrap;">{{ log.get('created_at', '-') }}</span>
+                <span style="
+                    padding: 2px 8px;
+                    border-radius: 4px;
+                    font-size: 10px;
+                    font-weight: 600;
+                    text-transform: uppercase;
+                    background: {{ 'rgba(63, 185, 80, 0.15)' if log.get('level') == 'info' else 'rgba(248, 81, 73, 0.15)' if log.get('level') == 'error' else 'rgba(210, 153, 34, 0.15)' }};
+                    color: {{ 'var(--success)' if log.get('level') == 'info' else 'var(--danger)' if log.get('level') == 'error' else 'var(--warning)' }};
+                ">
+                    {{ log.get('level', 'info') }}
+                </span>
+                <span style="color: var(--text);">{{ log.get('message', '') }}</span>
+                {% if log.get('source') %}
+                <span style="color: #8b949e; margin-left: auto;">[{{ log.get('source') }}]</span>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <div class="empty-state-icon">📋</div>
+            <p>No logs available</p>
+            <p style="font-size: 12px; margin-top: 8px;">Logs will appear when the bot is running</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="section-title" style="margin-top: 24px;">Log Statistics</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px;">
+    <div class="card">
+        <div class="card-body" style="text-align: center;">
+            <div style="font-size: 32px; font-weight: 700; color: var(--success);">
+                {{ info_count|default(0) }}
+            </div>
+            <div style="font-size: 12px; color: #8b949e;">Info Logs</div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-body" style="text-align: center;">
+            <div style="font-size: 32px; font-weight: 700; color: #58a6ff;">
+                {{ msg_count|default(0) }}
+            </div>
+            <div style="font-size: 12px; color: #8b949e;">Raw Messages</div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-body" style="text-align: center;">
+            <div style="font-size: 32px; font-weight: 700; color: var(--warning);">
+                {{ signal_count|default(0) }}
+            </div>
+            <div style="font-size: 12px; color: #8b949e;">Signals Detected</div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Notifications — TelVictory{% endblock %}
+{% block page_heading %}Notifications{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Notifications</h1>
+    <p>System events and alerts from the bot.</p>
+</div>
+
+<div class="card">
+    <div class="card-header">Recent Notifications ({{ notifications|length }})</div>
+    <div class="card-body scrollable">
+        {% if notifications %}
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+            {% for notif in notifications|reverse %}
+            <div style="display: flex; gap: 12px; padding: 12px; background: var(--bg-card); border-radius: 8px; border-left: 3px solid {{ 'var(--success)' if notif.level == 'info' else 'var(--danger)' if notif.level == 'error' else 'var(--warning)' }};">
+                <div style="font-size: 20px;">
+                    {% if notif.level == 'info' %}ℹ️{% elif notif.level == 'error' %}❌{% elif notif.level == 'warning' %}⚠️{% else %}📌{% endif %}
+                </div>
+                <div style="flex: 1;">
+                    <div style="font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--text-bright);">
+                        {{ notif.message }}
+                    </div>
+                    <div style="font-size: 11px; color: #8b949e; display: flex; gap: 12px;">
+                        <span>Source: {{ notif.source or 'system' }}</span>
+                        <span>{{ notif.created_at }}</span>
+                    </div>
+                </div>
+                <span class="badge badge-{{ 'win' if notif.level == 'info' else 'loss' if notif.level == 'error' else 'pending' }}">
+                    {{ notif.level }}
+                </span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <div class="empty-state-icon">🔔</div>
+            <p>No notifications</p>
+            <p style="font-size: 12px; margin-top: 8px;">Notifications will appear here when events occur</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="section-title" style="margin-top: 24px;">Notification Settings</div>
+<div class="card">
+    <div class="card-header">Configure Alerts</div>
+    <div class="card-body">
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: var(--bg-card); border-radius: 8px;">
+                <div>
+                    <div style="font-weight: 600;">Trade Executed</div>
+                    <div style="font-size: 12px; color: #8b949e;">Notify when a trade is placed</div>
+                </div>
+                <span class="badge badge-win">Enabled</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: var(--bg-card); border-radius: 8px;">
+                <div>
+                    <div style="font-weight: 600;">Signal Received</div>
+                    <div style="font-size: 12px; color: #8b949e;">Notify when trading signal is detected</div>
+                </div>
+                <span class="badge badge-win">Enabled</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: var(--bg-card); border-radius: 8px;">
+                <div>
+                    <div style="font-weight: 600;">Error Alerts</div>
+                    <div style="font-size: 12px; color: #8b949e;">Notify on connection or trade errors</div>
+                </div>
+                <span class="badge badge-win">Enabled</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: var(--bg-card); border-radius: 8px;">
+                <div>
+                    <div style="font-weight: 600;">Daily Summary</div>
+                    <div style="font-size: 12px; color: #8b949e;">Daily trading report (not implemented)</div>
+                </div>
+                <span class="badge badge-pending">Disabled</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

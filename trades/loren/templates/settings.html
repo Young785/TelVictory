@@ -1,0 +1,548 @@
+{% extends "base.html" %}
+
+{% block title %}Settings — TelVictory{% endblock %}
+{% block page_heading %}Settings{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Settings</h1>
+    <p>Configure trading defaults, Telegram connection, and broker credentials. Per-channel parser and platform options are managed under <a href="/channels">Channels</a>.</p>
+</div>
+
+<div class="settings-layout">
+    <nav class="settings-nav">
+        <button type="button" class="settings-tab active" data-tab="trading">Trading</button>
+        <button type="button" class="settings-tab" data-tab="telegram">Telegram</button>
+        <button type="button" class="settings-tab" data-tab="platforms">Platforms</button>
+        <button type="button" class="settings-tab" data-tab="advanced">Advanced</button>
+    </nav>
+
+    <div class="settings-panels">
+        <!-- Trading -->
+        <div id="panel-trading" class="settings-panel active">
+            <div class="card">
+                <div class="card-header">Trading defaults</div>
+                <div class="card-body">
+                    <div class="info-banner">
+                        These values apply when a channel has no custom amount. Set parser, platform, and timezone per channel on the <a href="/channels">Channels</a> page.
+                    </div>
+                    <form id="trading-form" onsubmit="return saveTradingSettings(event)">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Default trade amount ($)</label>
+                                <input class="form-control" type="number" name="default_amount" value="{{ config.DEFAULT_AMOUNT }}" step="0.1" min="1">
+                            </div>
+                            <div class="form-group">
+                                <label>Currency</label>
+                                <select class="form-control" name="currency">
+                                    <option value="USD" {{ 'selected' if config.CURRENCY == 'USD' }}>USD</option>
+                                    <option value="EUR" {{ 'selected' if config.CURRENCY == 'EUR' }}>EUR</option>
+                                    <option value="GBP" {{ 'selected' if config.CURRENCY == 'GBP' }}>GBP</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Max martingale levels</label>
+                                <input class="form-control" type="number" name="max_martingale" value="{{ config.MAX_MARTINGALE_LEVELS }}" min="0" max="5">
+                            </div>
+                            <div class="form-group">
+                                <label>Martingale multiplier</label>
+                                <input class="form-control" type="number" name="martingale_multiplier" value="{{ config.MARTINGALE_MULTIPLIER }}" step="0.1" min="1">
+                            </div>
+                            <div class="form-group">
+                                <label>Default signal timezone</label>
+                                <input class="form-control" type="text" name="timezone" value="{{ config.TIMEZONE or 'UTC' }}" placeholder="UTC-4">
+                                <p class="hint">Fallback when a channel has no timezone (e.g. UTC-4 for New York)</p>
+                            </div>
+                        </div>
+                        <div class="form-group" style="margin-top:16px">
+                            <label class="form-check">
+                                <input type="checkbox" name="monitor_all_channels" id="monitor_all" {{ 'checked' if config.MONITOR_ALL_CHANNELS else '' }}>
+                                <span>
+                                    <strong>Monitor all Telegram chats</strong><br>
+                                    <span class="hint" style="display:inline">Off recommended: only trade channels you add under Channels.</span>
+                                </span>
+                            </label>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary" id="btn-save-trading">Save trading settings</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Telegram -->
+        <div id="panel-telegram" class="settings-panel">
+            <div class="card">
+                <div class="card-header">API credentials</div>
+                <div class="card-body">
+                    <p class="hint" style="margin-bottom:16px">From <a href="https://my.telegram.org" target="_blank">my.telegram.org</a> — used to read signal channels (userbot, not BotFather).</p>
+                    <form id="telegram-api-form" onsubmit="return saveTelegramApiSettings(event)">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>API ID</label>
+                                <input class="form-control" type="number" name="telegram_api_id" value="{{ config.TELEGRAM_API_ID or '' }}" required>
+                            </div>
+                            <div class="form-group">
+                                <label>API Hash</label>
+                                <input class="form-control" type="text" name="telegram_api_hash" value="{{ config.TELEGRAM_API_HASH or '' }}" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Session file name</label>
+                                <input class="form-control" type="text" name="telegram_session_name" value="{{ config.TELEGRAM_SESSION_NAME or 'loren_session' }}">
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary" id="btn-save-telegram-api">Save API credentials</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">Phone login</div>
+                <div class="card-body">
+                    <p class="hint" style="margin-bottom:16px">One session per server. Re-auth if you see “two different IP” errors.</p>
+                    <form id="session-form" onsubmit="return createSession(event)">
+                        <div class="form-grid" style="grid-template-columns:1fr auto">
+                            <div class="form-group">
+                                <label>Phone (with country code)</label>
+                                <input class="form-control" type="tel" id="phone_number" placeholder="+2348012345678">
+                            </div>
+                            <div class="form-group" style="display:flex;align-items:flex-end">
+                                <button type="submit" class="btn btn-primary" id="request-code-btn">Send code</button>
+                            </div>
+                        </div>
+                        <div id="code-section" style="display:none;margin-top:16px">
+                            <div class="form-grid" style="grid-template-columns:1fr auto">
+                                <div class="form-group">
+                                    <label>Verification code</label>
+                                    <input class="form-control" type="text" id="verification_code" placeholder="12345">
+                                </div>
+                                <div class="form-group" style="display:flex;align-items:flex-end">
+                                    <button type="button" class="btn btn-success" id="btn-verify-code" onclick="verifyCode()">Verify</button>
+                                </div>
+                            </div>
+                            <div id="2fa-section" style="display:none;margin-top:12px">
+                                <label>2FA password</label>
+                                <input class="form-control" type="password" id="2fa_password" placeholder="If enabled on Telegram">
+                            </div>
+                        </div>
+                    </form>
+                    <div id="session-status" style="margin-top:12px;display:none"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Platforms -->
+        <div id="panel-platforms" class="settings-panel">
+            <div class="info-banner">
+                Save credentials below, then <strong>Test connection</strong> or use <a href="/test_trade">Test Trade</a> to verify each broker. Channels pick which platform receives signals under <a href="/channels">Channels</a>.
+            </div>
+            <div class="form-actions" style="border:none;padding:0 0 16px;margin:0">
+                <button type="button" class="btn btn-secondary" id="btn-test-all-platforms" onclick="testAllPlatformConnections()">Test all connections</button>
+            </div>
+            <div id="platform-test-all-results" class="hint" style="display:none;margin-bottom:16px"></div>
+            <div class="platform-card" id="platform-card-pocket_option">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+                    <h4>🎰 Pocket Option</h4>
+                    <span class="status-chip" id="po-status">{{ 'Connected' if platforms.get('pocket_option', {}).get('connected') else 'Disconnected' }}</span>
+                </div>
+                {% set po = platforms.get('pocket_option', {}) %}
+                {% if po %}
+                <p class="hint" style="margin-bottom:12px">
+                    Balance: ${{ '%.2f' % po.get('balance', 0) }} · {{ po.get('account_type', '—')|title }}
+                    {% if po.get('simulation_mode') %} · <span style="color:var(--warning)">Simulation</span>{% endif %}
+                </p>
+                <div class="form-actions" style="border:none;padding:0 0 12px;margin:0">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="platformConnect('pocket_option')">Connect</button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="platformDisconnect('pocket_option')">Disconnect</button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="testPlatformConnection('pocket_option')">Test connection</button>
+                    <a href="/test_trade?platform=pocket_option" class="btn btn-secondary btn-sm" style="text-decoration:none">Test trade →</a>
+                </div>
+                {% endif %}
+                <form id="pocket-option-form" onsubmit="return savePocketOptionSettings(event)">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Email</label>
+                            <input class="form-control" type="email" name="po_email" value="{{ config.POCKET_OPTION_EMAIL or '' }}">
+                        </div>
+                        <div class="form-group">
+                            <label>Password</label>
+                            <input class="form-control" type="password" name="po_password" value="{{ config.POCKET_OPTION_PASSWORD or '' }}">
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-top:12px">
+                        <label>SSID (session token)</label>
+                        <textarea class="form-control" name="po_ssid" rows="3" placeholder='From browser DevTools → Network → WS → auth message'>{{ config.POCKET_OPTION_SSID or '' }}</textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary" id="btn-save-po">Save credentials</button>
+                    </div>
+                </form>
+                <div id="po-test-result" class="hint" style="margin-top:12px;display:none"></div>
+            </div>
+            <div class="platform-card" id="platform-card-deriv">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+                    <h4>📈 Deriv</h4>
+                    <span class="status-chip" id="deriv-status">{{ 'Connected' if platforms.get('deriv', {}).get('connected') else 'Optional' }}</span>
+                </div>
+                {% set dv = platforms.get('deriv', {}) %}
+                {% if dv %}
+                <p class="hint" style="margin-bottom:12px">
+                    Balance: ${{ '%.2f' % dv.get('balance', 0) }} · Trades are simulated until live API is wired.
+                </p>
+                <div class="form-actions" style="border:none;padding:0 0 12px;margin:0">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="platformConnect('deriv')">Connect</button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="platformDisconnect('deriv')">Disconnect</button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="testPlatformConnection('deriv')">Test connection</button>
+                    <a href="/test_trade?platform=deriv" class="btn btn-secondary btn-sm" style="text-decoration:none">Test trade →</a>
+                </div>
+                {% endif %}
+                <form id="deriv-form" onsubmit="return saveDerivSettings(event)">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>API token</label>
+                            <input class="form-control" type="text" name="deriv_token" value="{{ deriv_token or '' }}">
+                        </div>
+                        <div class="form-group">
+                            <label>App ID</label>
+                            <input class="form-control" type="text" name="deriv_app_id" value="{{ deriv_app_id or '12345' }}">
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary" id="btn-save-deriv">Save Deriv</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Advanced -->
+        <div id="panel-advanced" class="settings-panel">
+            <div class="card">
+                <div class="card-header">Email reports</div>
+                <div class="card-body">
+                    <p class="hint" style="margin-bottom:16px">
+                        Automatic reports to your inbox: <strong>daily</strong> (previous day),
+                        <strong>weekly</strong> (Mondays), <strong>monthly</strong> (1st of month) at
+                        {{ config.REPORT_DAILY_HOUR }}:{{ '%02d' % config.REPORT_DAILY_MINUTE }} UTC.
+                    </p>
+                    <form id="reports-form" onsubmit="return saveReportSettings(event)">
+                        <label class="form-check" style="margin-bottom:12px">
+                            <input type="checkbox" name="report_email_enabled" id="report_enabled" {{ 'checked' if config.REPORT_EMAIL_ENABLED else '' }}>
+                            <span>Enable scheduled email reports</span>
+                        </label>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Send reports to</label>
+                                <input class="form-control" type="email" name="report_email_to" value="{{ config.REPORT_EMAIL_TO or 'ayomikunariyo@gmail.com' }}">
+                            </div>
+                            <div class="form-group">
+                                <label>SMTP host</label>
+                                <input class="form-control" type="text" name="smtp_host" value="{{ config.SMTP_HOST or 'smtp.gmail.com' }}" placeholder="smtp.gmail.com">
+                            </div>
+                            <div class="form-group">
+                                <label>SMTP port</label>
+                                <input class="form-control" type="number" name="smtp_port" value="{{ config.SMTP_PORT }}">
+                            </div>
+                            <div class="form-group">
+                                <label>SMTP user</label>
+                                <input class="form-control" type="text" name="smtp_user" value="{{ config.SMTP_USER or '' }}" placeholder="your@gmail.com">
+                            </div>
+                            <div class="form-group">
+                                <label>SMTP password / app password</label>
+                                <input class="form-control" type="password" name="smtp_password" value="" placeholder="{{ '••••••••' if config.SMTP_PASSWORD else 'Required for Gmail' }}">
+                            </div>
+                            <div class="form-group">
+                                <label>From address (optional)</label>
+                                <input class="form-control" type="text" name="smtp_from" value="{{ config.SMTP_FROM or '' }}">
+                            </div>
+                            <div class="form-group">
+                                <label>Daily send time (UTC hour)</label>
+                                <input class="form-control" type="number" name="report_daily_hour" min="0" max="23" value="{{ config.REPORT_DAILY_HOUR }}">
+                            </div>
+                            <div class="form-group">
+                                <label>Daily send time (UTC minute)</label>
+                                <input class="form-control" type="number" name="report_daily_minute" min="0" max="59" value="{{ config.REPORT_DAILY_MINUTE }}">
+                            </div>
+                        </div>
+                        <label class="form-check" style="margin-top:8px">
+                            <input type="checkbox" name="smtp_use_tls" id="smtp_tls" {{ 'checked' if config.SMTP_USE_TLS else '' }}>
+                            <span>Use TLS (recommended for port 587)</span>
+                        </label>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary" id="btn-save-reports">Save report settings</button>
+                            <button type="button" class="btn btn-secondary" id="btn-send-test-report" onclick="sendTestReport()">Send test report now</button>
+                        </div>
+                    </form>
+                    <p class="hint" style="margin-top:12px">Gmail: use an <a href="https://myaccount.google.com/apppasswords" target="_blank">App Password</a>, not your normal login password.</p>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">Test trade</div>
+                <div class="card-body compact">
+                    <p class="hint" style="margin-bottom:12px">Run a single test order from the dedicated page (uses connected Pocket Option).</p>
+                    <a href="/test_trade" class="btn btn-secondary" style="text-decoration:none">Go to Test Trade →</a>
+                </div>
+            </div>
+            <div class="card" style="border-color:rgba(239,68,68,0.4)">
+                <div class="card-header" style="color:var(--danger)">Danger zone</div>
+                <div class="card-body">
+                    <p class="hint" style="margin-bottom:16px">These actions cannot be undone.</p>
+                    <div class="form-actions" style="border:none;padding-top:0;margin-top:0">
+                        <button type="button" class="btn btn-danger" id="btn-clear-logs" onclick="clearLogs()">Clear all logs</button>
+                        <button type="button" class="btn btn-danger" id="btn-reset-stats" onclick="resetStats()">Reset statistics</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let phoneCodeHash = null;
+
+function saveReportSettings(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn-save-reports');
+    AppUI.setButtonLoading(btn, 'Saving...');
+    const fd = new FormData(e.target);
+    const data = Object.fromEntries(fd);
+    data.report_email_enabled = document.getElementById('report_enabled').checked;
+    data.smtp_use_tls = document.getElementById('smtp_tls').checked;
+    fetch('/api/settings/reports', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    }).then(r => r.json()).then(d => {
+        AppUI.resetButton(btn);
+        showNotification(d.message, d.success ? 'success' : 'error');
+    });
+    return false;
+}
+
+function sendTestReport() {
+    const btn = document.getElementById('btn-send-test-report');
+    const to = document.querySelector('[name=report_email_to]').value;
+    AppUI.setButtonLoading(btn, 'Sending...');
+    fetch('/api/reports/send-test', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ to_email: to })
+    }).then(r => r.json()).then(d => {
+        AppUI.resetButton(btn);
+        showNotification(d.message || (d.success ? 'Test report sent' : 'Failed'), d.success ? 'success' : 'error');
+    }).catch(err => { AppUI.resetButton(btn); showNotification(err.message, 'error'); });
+}
+
+function saveTradingSettings(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn-save-trading');
+    AppUI.setButtonLoading(btn, 'Saving...');
+    const fd = new FormData(e.target);
+    const data = Object.fromEntries(fd);
+    data.monitor_all_channels = document.getElementById('monitor_all').checked;
+    fetch('/api/settings/trading', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    }).then(r => r.json()).then(d => {
+        AppUI.resetButton(btn);
+        showNotification(d.success ? 'Trading settings saved' : d.message, d.success ? 'success' : 'error');
+    }).catch(err => { AppUI.resetButton(btn); showNotification(err.message, 'error'); });
+    return false;
+}
+
+function saveTelegramApiSettings(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn-save-telegram-api');
+    AppUI.setButtonLoading(btn, 'Saving...');
+    fetch('/api/settings/telegram', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(Object.fromEntries(new FormData(e.target)))
+    }).then(r => r.json()).then(d => {
+        AppUI.resetButton(btn);
+        showNotification(d.success ? 'Telegram API saved' : d.message, d.success ? 'success' : 'error');
+    });
+    return false;
+}
+
+function createSession(e) {
+    e.preventDefault();
+    const phone = document.getElementById('phone_number').value;
+    if (!phone) { showNotification('Enter phone number', 'error'); return false; }
+    const btn = document.getElementById('request-code-btn');
+    AppUI.setButtonLoading(btn, 'Sending...');
+    fetch('/api/session/request_code', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ phone })
+    }).then(r => r.json()).then(d => {
+        AppUI.resetButton(btn);
+        if (d.success) {
+            if (d.message === 'Already authorized') showNotification('Session already active', 'success');
+            else {
+                phoneCodeHash = d.phone_code_hash;
+                document.getElementById('code-section').style.display = 'block';
+                showNotification('Code sent — check Telegram', 'success');
+            }
+        } else showNotification(d.message, 'error');
+    });
+    return false;
+}
+
+function verifyCode() {
+    const btn = document.getElementById('btn-verify-code');
+    AppUI.setButtonLoading(btn, 'Verifying...');
+    fetch('/api/session/verify', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            phone: document.getElementById('phone_number').value,
+            code: document.getElementById('verification_code').value,
+            phone_code_hash: phoneCodeHash,
+            password: document.getElementById('2fa_password').value
+        })
+    }).then(r => r.json()).then(d => {
+        AppUI.resetButton(btn);
+        if (d.success) {
+            showNotification('Telegram session created', 'success');
+            document.getElementById('code-section').style.display = 'none';
+        } else if (d.requires_2fa) {
+            document.getElementById('2fa-section').style.display = 'block';
+            showNotification('Enter 2FA password', 'warning');
+        } else showNotification(d.message, 'error');
+    });
+}
+
+function savePocketOptionSettings(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn-save-po');
+    AppUI.setButtonLoading(btn, 'Saving...');
+    fetch('/api/settings/pocket_option', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(Object.fromEntries(new FormData(e.target)))
+    }).then(r => r.json()).then(d => {
+        AppUI.resetButton(btn);
+        showNotification(d.success ? 'Pocket Option saved' : d.message, d.success ? 'success' : 'error');
+        if (d.success) setChip('po-status', 'Configured', true);
+    });
+    return false;
+}
+
+function saveDerivSettings(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn-save-deriv');
+    AppUI.setButtonLoading(btn, 'Saving...');
+    fetch('/api/settings/deriv', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(Object.fromEntries(new FormData(e.target)))
+    }).then(r => r.json()).then(d => {
+        AppUI.resetButton(btn);
+        showNotification(d.success ? 'Deriv saved' : d.message, d.success ? 'success' : 'error');
+    });
+    return false;
+}
+
+function testPocketOptionConnection() {
+    const btn = document.getElementById('btn-test-po');
+    const res = document.getElementById('po-test-result');
+    AppUI.setButtonLoading(btn, 'Testing...');
+    res.style.display = 'block';
+    res.textContent = 'Connecting...';
+    fetch('/api/platform/connect', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ platform: 'pocket_option' })
+    }).then(r => r.json()).then(d => {
+        AppUI.resetButton(btn);
+        res.textContent = d.success ? '✅ Connected' : '❌ ' + d.message;
+        if (d.success) setChip('po-status', 'Connected', true);
+    });
+}
+
+function setChip(id, text, ok) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text;
+    el.className = 'status-chip' + (ok ? ' ok' : '');
+}
+
+function clearLogs() {
+    if (!confirm('Clear all logs?')) return;
+    fetch('/api/clear_logs', { method: 'POST' }).then(() => { showNotification('Logs cleared', 'success'); });
+}
+function resetStats() {
+    if (!confirm('Reset all statistics?')) return;
+    fetch('/api/reset_stats', { method: 'POST' }).then(() => { showNotification('Stats reset', 'success'); });
+}
+
+function platformConnect(name) {
+    fetch('/api/platform/connect', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ platform: name })
+    }).then(r => r.json()).then(d => {
+        showNotification(d.message, d.success ? 'success' : 'error');
+        if (d.success) setTimeout(() => location.reload(), 600);
+    });
+}
+function platformDisconnect(name) {
+    fetch('/api/platform/disconnect', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ platform: name })
+    }).then(r => r.json()).then(d => {
+        showNotification(d.message, d.success ? 'success' : 'error');
+        if (d.success) setTimeout(() => location.reload(), 600);
+    });
+}
+function testPlatformConnection(name) {
+    const chip = document.getElementById(name === 'pocket_option' ? 'po-status' : 'deriv-status');
+    if (chip) chip.textContent = 'Testing...';
+    fetch('/api/platform/test_connection', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ platform: name })
+    }).then(r => r.json()).then(d => {
+        if (chip) setChip(chip.id, d.success ? (d.simulation_mode ? 'Simulation' : 'Connected') : 'Failed', d.success);
+        showNotification(d.message || (d.success ? 'OK' : 'Failed'), d.success ? 'success' : 'error');
+        if (d.success) setTimeout(() => location.reload(), 800);
+    });
+}
+function testAllPlatformConnections() {
+    const btn = document.getElementById('btn-test-all-platforms');
+    const box = document.getElementById('platform-test-all-results');
+    AppUI.setButtonLoading(btn, 'Testing...');
+    box.style.display = 'block';
+    box.textContent = 'Connecting to each broker (no trades)...';
+    fetch('/api/platforms/test_connections', { method: 'POST' })
+        .then(r => r.json())
+        .then(d => {
+            AppUI.resetButton(btn);
+            const lines = (d.results || []).map(r =>
+                (r.success ? '✅' : '❌') + ' ' + r.platform + ': ' + (r.message || '') +
+                (r.balance != null ? ' ($' + Number(r.balance).toFixed(2) + ')' : '')
+            );
+            box.innerHTML = lines.join('<br>') || 'No platforms registered.';
+            showNotification(d.success ? 'All connections OK' : 'Some connections failed', d.success ? 'success' : 'warning');
+            setTimeout(() => location.reload(), 1500);
+        })
+        .catch(e => { AppUI.resetButton(btn); box.textContent = e.message; });
+}
+function testPocketOptionConnection() { testPlatformConnection('pocket_option'); }
+
+(function highlightPlatformFromUrl() {
+    const h = location.hash || '';
+    const m = h.match(/platform=([a-z_]+)/) || location.search.match(/platform=([a-z_]+)/);
+    if (m) {
+        const el = document.getElementById('platform-card-' + m[1]);
+        if (el) { el.style.outline = '2px solid var(--primary)'; el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    }
+})();
+</script>
+{% endblock %}

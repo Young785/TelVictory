@@ -1,0 +1,270 @@
+{% extends "base.html" %}
+
+{% block title %}Test Trade — TelVictory{% endblock %}
+{% block page_heading %}Test Trade{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Test trade</h1>
+    <p>Verify each broker safely: test connections first (no orders), then run one small test trade on the platform you choose.</p>
+</div>
+
+<div class="info-banner warn">
+    <strong>Safe order:</strong> (1) Save credentials in <a href="/settings#tab-platforms">Settings → Platforms</a>.
+    (2) <strong>Test connection</strong> or <strong>Test all connections</strong> — no trades.
+    (3) Only then run a <strong>test trade</strong> with a small amount on one platform.
+</div>
+
+<!-- Step 1: Connections -->
+<div class="card">
+    <div class="card-header">1. Test connections (no trades)</div>
+    <div class="card-body">
+        <div class="form-group">
+            <label>Platform</label>
+            <select class="form-control" id="conn_platform" style="max-width:280px">
+                {% for pid, label in testable_platforms %}
+                <option value="{{ pid }}" {{ 'selected' if pid == default_platform else '' }}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-actions">
+            <button type="button" class="btn btn-secondary" id="btn-test-conn" onclick="testConnection()">Test connection</button>
+            <button type="button" class="btn btn-secondary" id="btn-test-all" onclick="testAllConnections()">Test all connections</button>
+            <a href="/settings#tab-platforms" class="btn btn-secondary" style="text-decoration:none">Edit credentials</a>
+        </div>
+        <div id="connResults" class="test-result-box" style="margin-top:16px"></div>
+        <div class="platform-status-grid" style="margin-top:20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
+            {% for pid, label in testable_platforms %}
+            {% set st = platforms.get(pid, {}) %}
+            <div class="platform-card compact" id="status-{{ pid }}">
+                <strong>{{ label }}</strong>
+                <div class="hint" style="margin-top:6px">
+                    {{ '🟢 Connected' if st.get('connected') else '🔴 Disconnected' }}
+                    {% if st.get('balance') is not none %} · ${{ '%.2f' % st.balance }}{% endif %}
+                    {% if st.get('simulation_mode') %} · sim{% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Step 2: Test trade -->
+<div class="card" style="margin-top:20px">
+    <div class="card-header">2. Test trade (places one order)</div>
+    <div class="card-body">
+        <div class="form-grid">
+            <div class="form-group">
+                <label>Platform</label>
+                <select class="form-control" id="trade_platform">
+                    {% for pid, label in testable_platforms %}
+                    <option value="{{ pid }}" {{ 'selected' if pid == default_platform else '' }}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+                <p class="hint" id="platform-hint"></p>
+            </div>
+            <div class="form-group">
+                <label>Pair</label>
+                <input class="form-control" type="text" id="test_pair" value="GBP/AUD">
+            </div>
+            <div class="form-group">
+                <label>Direction</label>
+                <select class="form-control" id="test_direction">
+                    <option value="BUY">BUY</option>
+                    <option value="SELL">SELL</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Amount ($)</label>
+                <input class="form-control" type="number" id="test_amount" value="1" step="0.1" min="0.1">
+            </div>
+            <div class="form-group">
+                <label>Expiration (minutes)</label>
+                <input class="form-control" type="number" id="test_expiration" value="5" min="1">
+            </div>
+        </div>
+        <label class="form-check" style="margin-top:12px" id="otc-wrap">
+            <input type="checkbox" id="test_otc" checked>
+            <span>OTC market (Pocket Option)</span>
+        </label>
+        <label class="form-check" style="margin-top:12px">
+            <input type="checkbox" id="confirm_trade">
+            <span>I understand this may place a <strong>real</strong> trade if the account is live (not demo/simulation).</span>
+        </label>
+        <div class="form-actions">
+            <button type="button" class="btn btn-primary" id="executeBtn" onclick="executeTestTrade()">Execute test trade</button>
+        </div>
+        <div id="resultBox" class="test-result-box"></div>
+    </div>
+</div>
+
+<div class="card" style="margin-top:20px">
+    <div class="card-header">Recent test trades</div>
+    <div class="card-body table-wrap" id="recentTrades">
+        <p class="hint" style="text-align:center;padding:20px">No recent test trades yet.</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const defaultPlatform = {{ default_platform|tojson }};
+
+function updatePlatformHint() {
+    const p = document.getElementById('trade_platform').value;
+    const hint = document.getElementById('platform-hint');
+    const otc = document.getElementById('otc-wrap');
+    if (p === 'deriv') {
+        hint.textContent = 'Deriv test trades are simulated until live API is enabled.';
+        otc.style.display = 'none';
+    } else {
+        hint.textContent = 'Uses your Pocket Option SSID from Settings. Prefer demo account for testing.';
+        otc.style.display = 'flex';
+    }
+}
+document.getElementById('trade_platform').addEventListener('change', updatePlatformHint);
+updatePlatformHint();
+
+function renderConnResults(results, single) {
+    const box = document.getElementById('connResults');
+    box.className = 'test-result-box show';
+    const list = single ? [results] : (results || []);
+    box.innerHTML = list.map(r => {
+        const icon = r.success ? '✅' : '❌';
+        const bal = r.balance != null ? ` · $${Number(r.balance).toFixed(2)}` : '';
+        const sim = r.simulation_mode ? ' (simulation)' : '';
+        return `<div style="margin-bottom:6px">${icon} <strong>${r.platform}</strong>: ${r.message || ''}${bal}${sim}</div>`;
+    }).join('') || 'No results';
+}
+
+function testConnection() {
+    const platform = document.getElementById('conn_platform').value;
+    const btn = document.getElementById('btn-test-conn');
+    AppUI.setButtonLoading(btn, 'Testing...');
+    const box = document.getElementById('connResults');
+    box.className = 'test-result-box test-result-pending show';
+    box.textContent = 'Connecting (no trade)...';
+    fetch('/api/platform/test_connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform })
+    })
+    .then(r => r.json())
+    .then(d => {
+        AppUI.resetButton(btn);
+        renderConnResults(d, true);
+        showNotification(d.message || (d.success ? 'Connected' : 'Failed'), d.success ? 'success' : 'error');
+        if (d.success) setTimeout(() => location.reload(), 1000);
+    })
+    .catch(e => { AppUI.resetButton(btn); showNotification(e.message, 'error'); });
+}
+
+function testAllConnections() {
+    const btn = document.getElementById('btn-test-all');
+    AppUI.setButtonLoading(btn, 'Testing all...');
+    const box = document.getElementById('connResults');
+    box.className = 'test-result-box test-result-pending show';
+    box.textContent = 'Testing each broker (no trades)...';
+    fetch('/api/platforms/test_connections', { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+        AppUI.resetButton(btn);
+        renderConnResults(d.results);
+        showNotification(d.success ? 'All OK' : 'Some failed — see results', d.success ? 'success' : 'warning');
+        setTimeout(() => location.reload(), 1500);
+    })
+    .catch(e => { AppUI.resetButton(btn); showNotification(e.message, 'error'); });
+}
+
+function executeTestTrade() {
+    if (!document.getElementById('confirm_trade').checked) {
+        showNotification('Check the confirmation box before placing a test trade', 'warning');
+        return;
+    }
+    const platform = document.getElementById('trade_platform').value;
+    const btn = document.getElementById('executeBtn');
+    const resultBox = document.getElementById('resultBox');
+    const pair = document.getElementById('test_pair').value;
+    const direction = document.getElementById('test_direction').value;
+    const amount = parseFloat(document.getElementById('test_amount').value);
+    const expiration = parseInt(document.getElementById('test_expiration').value);
+    const isOtc = document.getElementById('test_otc').checked;
+
+    if (!pair || !direction || !amount || !expiration) {
+        showResult('error', 'Fill in all fields');
+        return;
+    }
+
+    AppUI.setButtonLoading(btn, 'Executing...');
+    resultBox.className = 'test-result-box test-result-pending show';
+    resultBox.textContent = `Placing test trade on ${platform}...`;
+
+    fetch('/api/test_trade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform, pair, direction, amount, expiration, is_otc: isOtc })
+    })
+    .then(r => r.json())
+    .then(d => {
+        AppUI.resetButton(btn);
+        if (d.success) {
+            const result = d.result.result || 'pending';
+            const profit = parseFloat(d.result.profit || 0);
+            const sim = d.result.is_simulation ? ' (simulation)' : ' (live)';
+            resultBox.className = 'test-result-box test-result-success show';
+            resultBox.innerHTML = `
+                <strong>${platform}</strong> · ${result.toUpperCase()}${sim}
+                <div class="trade-details">
+                    <div class="trade-detail-row"><span>Pair</span><span>${pair}</span></div>
+                    <div class="trade-detail-row"><span>Direction</span><span>${direction}</span></div>
+                    <div class="trade-detail-row"><span>Amount</span><span>$${amount.toFixed(2)}</span></div>
+                    <div class="trade-detail-row"><span>P/L</span><span>$${profit.toFixed(2)}</span></div>
+                </div>`;
+            if (d.trade) addToRecentTrades(d.trade);
+            showNotification('Test trade completed', 'success');
+        } else {
+            showResult('error', d.message || 'Failed');
+        }
+    })
+    .catch(e => {
+        AppUI.resetButton(btn);
+        showResult('error', e.message);
+    });
+}
+
+function showResult(type, message) {
+    const resultBox = document.getElementById('resultBox');
+    resultBox.className = 'test-result-box test-result-' + type + ' show';
+    resultBox.textContent = message;
+}
+
+let recentTrades = [];
+function addToRecentTrades(trade) {
+    recentTrades.unshift(trade);
+    if (recentTrades.length > 8) recentTrades.pop();
+    renderRecentTrades();
+}
+function renderRecentTrades() {
+    const container = document.getElementById('recentTrades');
+    if (!recentTrades.length) return;
+    let html = '<table><thead><tr><th>Time</th><th>Platform</th><th>Pair</th><th>Dir</th><th>Result</th></tr></thead><tbody>';
+    recentTrades.forEach(t => {
+        html += `<tr><td>${t.executed_at ? new Date(t.executed_at).toLocaleTimeString() : '—'}</td><td>${t.platform || '—'}</td><td>${t.pair}</td><td>${t.direction}</td><td>${t.result || 'pending'}</td></tr>`;
+    });
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
+fetch('/api/trades').then(r => r.json()).then(d => {
+    if (d.success && d.trades) {
+        recentTrades = d.trades.filter(t => t.type === 'test').slice(0, 8);
+        renderRecentTrades();
+    }
+}).catch(() => {});
+
+document.getElementById('conn_platform').addEventListener('change', function() {
+    document.getElementById('trade_platform').value = this.value;
+    updatePlatformHint();
+});
+</script>
+{% endblock %}

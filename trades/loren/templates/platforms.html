@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block title %}Platforms — TelVictory{% endblock %}
+{% block page_heading %}Platforms{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Trading platforms</h1>
+    <p>Connect Pocket Option or Deriv. Each signal channel picks its platform under Channels.</p>
+</div>
+<div class="section-header">
+    <div class="section-title" style="margin:0">Brokers</div>
+    <a href="/settings" class="btn btn-secondary" style="font-size: 13px; text-decoration: none;">⚙️ Configure</a>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px;">
+    {% for name, status in platforms.items() %}
+    <div class="card" style="cursor: pointer; transition: transform 0.2s;" onclick="window.location.href='/platform/{{ name }}'" onmouseover="this.style.transform='translateY(-4px)'" onmouseout="this.style.transform='translateY(0)'">
+        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <span style="font-size: 24px;">{{ '🔴' if not status.connected else '🟢' }}</span>
+                <div>
+                    <div style="font-weight: 600; font-size: 16px;">{{ name.replace('_', ' ').title() }}</div>
+                    <div style="font-size: 11px; color: #8b949e;">{{ status.platform_name }}</div>
+                </div>
+            </div>
+            <span class="badge badge-{{ 'win' if status.connected else 'loss' if status.error_message else 'pending' }}">
+                {{ 'Connected' if status.connected else 'Error' if status.error_message else 'Disconnected' }}
+            </span>
+        </div>
+        <div class="card-body">
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                <div style="text-align: center;">
+                    <div style="font-size: 11px; color: #8b949e; margin-bottom: 4px;">Balance</div>
+                    <div style="font-size: 24px; font-weight: 700; color: var(--text-bright);">${{ '%.2f' % status.balance }}</div>
+                </div>
+                <div style="text-align: center;">
+                    <div style="font-size: 11px; color: #8b949e; margin-bottom: 4px;">Account</div>
+                    <div style="font-size: 16px; font-weight: 600;">{{ status.account_type.title() }}</div>
+                    {% if status.simulation_mode %}
+                    <div style="font-size: 10px; color: var(--warning);">Simulated</div>
+                    {% endif %}
+                </div>
+                <div style="text-align: center;">
+                    <div style="font-size: 11px; color: #8b949e; margin-bottom: 4px;">Currency</div>
+                    <div style="font-size: 16px; font-weight: 600;">{{ status.currency }}</div>
+                </div>
+            </div>
+            
+            {% if status.error_message %}
+            <div style="background: rgba(248, 81, 73, 0.15); color: var(--danger); padding: 10px; border-radius: 6px; font-size: 12px; margin-bottom: 12px;">
+                ❌ {{ status.error_message }}
+            </div>
+            {% endif %}
+            
+            <div style="display: flex; gap: 8px;">
+                <button onclick="event.stopPropagation(); connectPlatform('{{ name }}')" class="btn btn-primary" style="flex: 1; font-size: 12px; padding: 8px;">
+                    {{ 'Reconnect' if status.error_message else 'Connect' if not status.connected else 'Connected' }}
+                </button>
+                <button onclick="event.stopPropagation(); disconnectPlatform('{{ name }}')" class="btn" style="flex: 1; font-size: 12px; padding: 8px; background: var(--bg-card); color: var(--text);">
+                    Disconnect
+                </button>
+                <button onclick="event.stopPropagation(); window.location.href='/platform/{{ name }}'" class="btn" style="flex: 1; font-size: 12px; padding: 8px; background: var(--primary); color: white;">
+                    Details →
+                </button>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="card">
+        <div class="card-body" style="text-align: center; padding: 60px 20px;">
+            <div style="font-size: 48px; margin-bottom: 16px;">🏛️</div>
+            <p style="color: #8b949e; font-size: 16px; margin-bottom: 8px;">No trading platforms configured</p>
+            <p style="font-size: 13px; color: #8b949e; margin-bottom: 20px;">Add platforms to start trading</p>
+            <a href="/settings" class="btn btn-primary" style="text-decoration: none;">Go to Settings</a>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Add New Platform Card -->
+<div class="card" style="margin-top: 20px; border-style: dashed; border-color: var(--border);">
+    <div class="card-body" style="text-align: center; padding: 30px;">
+        <div style="font-size: 32px; margin-bottom: 12px;">➕</div>
+        <p style="color: #8b949e; margin-bottom: 12px;">Add a new trading platform</p>
+        <a href="/settings#platforms" class="btn btn-secondary" style="text-decoration: none;">Configure Platforms</a>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+function connectPlatform(platform) {
+    fetch('/api/platform/connect', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({platform: platform})
+    }).then(r => r.json()).then(d => {
+        if (d.success) {
+            location.reload();
+        } else {
+            alert('Failed: ' + d.message);
+        }
+    });
+}
+
+function disconnectPlatform(platform) {
+    fetch('/api/platform/disconnect', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({platform: platform})
+    }).then(r => r.json()).then(d => {
+        if (d.success) {
+            location.reload();
+        } else {
+            alert('Failed: ' + d.message);
+        }
+    });
+}
+
+// Auto-refresh status every 15 seconds
+setInterval(() => {
+    fetch('/api/platforms').then(r => r.json()).then(d => {
+        // Could update status dynamically
+    });
+}, 15000);
+</script>
+{% endblock %}
+
+{% endblock %}
